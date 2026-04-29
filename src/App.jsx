@@ -5,7 +5,6 @@ import {
   onAuthStateChanged, 
   GoogleAuthProvider, 
   signInWithPopup, 
-  signInAnonymously,
   signInWithCustomToken
 } from 'firebase/auth';
 import { 
@@ -23,10 +22,11 @@ import {
   Download, Upload, Lock, Settings, UserCog, ShieldAlert, Send
 } from 'lucide-react';
 
-// --- INIT FIREBASE (Siap untuk Netlify & Canvas) ---
+// --- INIT FIREBASE ---
 let app, auth, db;
 
 try {
+  // Mode Netlify menggunakan VITE_ env variables
   if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_API_KEY) {
     app = initializeApp({
       apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -37,6 +37,7 @@ try {
       appId: import.meta.env.VITE_FIREBASE_APP_ID
     });
   } 
+  // Mode Canvas / Preview 
   else if (typeof __firebase_config !== 'undefined' && __firebase_config) {
     app = initializeApp(JSON.parse(__firebase_config));
   }
@@ -46,10 +47,10 @@ try {
     db = getFirestore(app);
   }
 } catch (error) {
-  console.warn('Firebase tidak terkonfigurasi. Berjalan dalam mode offline.', error);
+  console.error('Firebase Setup Error:', error);
 }
 
-// Fungsi bantu database
+// Fungsi bantu referensi koleksi & dokumen (menyesuaikan environment)
 const getCollectionRef = (colName) => {
   if (typeof __app_id !== 'undefined') return collection(db, 'artifacts', __app_id, 'public', 'data', colName);
   return collection(db, colName); 
@@ -66,17 +67,9 @@ const PSE_NAMES = [
 ];
 
 const SALES_NAMES = [
-  'Ayu Arviani',
-  'Bondan Adi',
-  'Inaya Wulandari',
-  'Inneke Twita',
-  'Johnsy Hein Pitoi',
-  'Lestari Rumata Nancy',
-  'Lie Sunardi Fenery',
-  'Paulus Gideon',
-  'Rifan Septian',
-  'Ryan Dharmatirta',
-  'Sri Evi Wulandari'
+  'Ayu Arviani', 'Bondan Adi', 'Inaya Wulandari', 'Inneke Twita',
+  'Johnsy Hein Pitoi', 'Lestari Rumata Nancy', 'Lie Sunardi Fenery',
+  'Paulus Gideon', 'Rifan Septian', 'Ryan Dharmatirta', 'Sri Evi Wulandari'
 ];
 
 const DEFAULT_ROLES = {
@@ -122,7 +115,6 @@ const SCORING_RULES = [
 const METRICS_CONFIG = {
   kuantitatif: {
     title: 'A. KPI Kuantitatif', weight: 0.40, type: 'auto',
-    desc: 'Berdasarkan data operasional. Bisa disinkronisasi dari Project Tracking.',
     items: [
       { id: 'q1', label: 'Pipeline Generation', target: 5, unit: 'Opp/bln' },
       { id: 'q2', label: 'Win Rate', target: 30, unit: '%' },
@@ -132,29 +124,15 @@ const METRICS_CONFIG = {
   },
   kualitatif: {
     title: 'B. KPI Kualitatif', weight: 0.20, type: 'manual',
-    desc: 'Penilaian objektif 360° dari 3 sudut pandang.',
-    items: [
-      { id: 'k1', label: 'Kualitas Presentasi & Solusi' },
-      { id: 'k2', label: 'Kualitas Dokumen (HLD/LLD)' }
-    ]
+    items: [ { id: 'k1', label: 'Kualitas Presentasi & Solusi' }, { id: 'k2', label: 'Kualitas Dokumen (HLD/LLD)' } ]
   },
   pengembangan: {
     title: 'C. Pengembangan Diri', weight: 0.20, type: 'manual',
-    desc: 'Penilaian objektif 360° dari 3 sudut pandang.',
-    items: [
-      { id: 'p1', label: 'Sertifikasi' },
-      { id: 'p2', label: 'Training / Workshop' },
-      { id: 'p3', label: 'Internal Knowledge Sharing' }
-    ]
+    items: [ { id: 'p1', label: 'Sertifikasi' }, { id: 'p2', label: 'Training / Workshop' }, { id: 'p3', label: 'Internal Knowledge Sharing' } ]
   },
   kultur: {
     title: 'D. KPI Kultur', weight: 0.20, type: 'manual',
-    desc: 'Penilaian objektif 360° dari 3 sudut pandang.',
-    items: [
-      { id: 'c1', label: 'Responsivitas & Komunikasi' },
-      { id: 'c2', label: 'Disiplin & Kehadiran' },
-      { id: 'c3', label: 'Attitude & Etika Kerja' }
-    ]
+    items: [ { id: 'c1', label: 'Responsivitas & Komunikasi' }, { id: 'c2', label: 'Disiplin & Kehadiran' }, { id: 'c3', label: 'Attitude & Etika Kerja' } ]
   }
 };
 
@@ -165,62 +143,19 @@ const ROLE_CONFIG = {
   staff: { id: 'staff', label: 'Staff / PSE', icon: UserCircle, color: 'text-emerald-600 bg-emerald-50 border-emerald-200', scoreKey: 'skorPeer', canRateQuant: false, isQuantRequired: false, isOtherRequired: false }
 };
 
-const INITIAL_PROJECTS = [
-  { 
-    id: 'sim1', client: 'Kejaksaan Agung', priority: 'Low', pm: 'Syamil', backup: 'Yanuar', sales: 'Paulus Gideon', phase: 'Penawaran & Proposal', status: 'Not started', 
-    startDate: '2026-03-05', endDate: '2026-04-24', 
-    noteHistory: [{ text: 'Pembuatan dokumen BoQ dan proposal, perlu akun trial req ke zoom', timestamp: '2026-03-05T09:00:00Z', author: 'System' }], 
-    linkDoc: '', lastUpdatedBy: 'Simulator' 
-  },
-  { 
-    id: 'sim2', client: 'Adhi Cakra', priority: 'Low', pm: 'Damardjati', backup: 'Fakhri', sales: 'Rifan Septian', phase: 'PoC & Testing', status: 'Pending', 
-    startDate: '2026-03-10', endDate: '2026-03-10', 
-    noteHistory: [{ text: 'Penawaran sudah dikirim ke user & Create report PoC', timestamp: '2026-03-10T10:30:00Z', author: 'System' }], 
-    linkDoc: '', lastUpdatedBy: 'Simulator' 
-  },
-  { 
-    id: 'sim3', client: 'Traveloka', priority: 'Low', pm: 'Syamil', backup: 'Hakim', sales: 'Paulus Gideon', phase: 'Instalasi', status: 'Completed', 
-    startDate: '2025-12-15', endDate: '2026-03-11', 
-    noteHistory: [{ text: 'Pending di BAST, menunggu jadwal BAST', timestamp: '2026-03-11T14:15:00Z', author: 'System' }], 
-    linkDoc: 'https://drive.google.com/drive/u/0/folders/14oZSyWTF6unaM44x_ndCkVNiWF-JjMHe', lastUpdatedBy: 'Simulator' 
-  },
-  { 
-    id: 'sim4', client: 'CPI', priority: 'Low', pm: 'Damardjati', backup: 'Pankaj', sales: 'Johnsy Hein Pitoi', phase: 'PoC & Testing', status: 'Completed', 
-    startDate: '2026-02-25', endDate: '2026-03-16', 
-    noteHistory: [{ text: 'Barang sudah di dismantle, Create report PoC & BoQ', timestamp: '2026-03-16T11:00:00Z', author: 'System' }], 
-    linkDoc: '', lastUpdatedBy: 'Simulator' 
-  },
-  { 
-    id: 'sim5', client: 'Pernod Richard', priority: 'Low', pm: 'Dayat', backup: 'Pankaj', sales: 'Johnsy Hein Pitoi', phase: 'Instalasi', status: 'In progress', 
-    startDate: '2026-04-15', endDate: '2026-04-24', 
-    noteHistory: [{ text: 'Perangkat sudah di delivery, sedang menunggu apakah perlu ada installasi atau tidak', timestamp: '2026-04-15T08:20:00Z', author: 'System' }], 
-    linkDoc: '', lastUpdatedBy: 'Simulator' 
-  }
-];
-
-const INITIAL_EVALUATIONS = [
-  { id: 'e1', name: 'Syamil', scores: { kuantitatif: 8, kualitatif: 7.5, pengembangan: 8, kultur: 9 }, finalScore: 8.1, status: 'Exceeds Exp.' },
-  { id: 'e2', name: 'Damardjati', scores: { kuantitatif: 7, kualitatif: 7, pengembangan: 7, kultur: 8 }, finalScore: 7.2, status: 'Meets Exp.' },
-  { id: 'e3', name: 'Dayat', scores: { kuantitatif: 9, kualitatif: 8.5, pengembangan: 8, kultur: 9 }, finalScore: 8.7, status: 'Exceeds Exp.' },
-];
-
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard'); 
-  const [evaluations, setEvaluations] = useState(INITIAL_EVALUATIONS);
-  const [projects, setProjects] = useState(INITIAL_PROJECTS);
+  const [evaluations, setEvaluations] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [selectedPseDetailId, setSelectedPseDetailId] = useState(null); 
   
-  // Custom Alert / Confirm Dialog State
   const [dialog, setDialog] = useState(null);
-
-  // Helper untuk memunculkan Modal
   const showMessage = (msg) => setDialog({ type: 'alert', message: msg });
   const showConfirm = (msg, onConfirmFn) => setDialog({ type: 'confirm', message: msg, onConfirm: onConfirmFn });
 
-  // State Auth & Hak Akses
-  const [realUser, setRealUser] = useState(null);
-  const [mockUser, setMockUser] = useState(null);
-  const activeUser = mockUser || realUser;
+  // Status Load Auth
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [activeUser, setActiveUser] = useState(null);
 
   const [managedRoles, setManagedRoles] = useState([]); 
   const [userRole, setUserRole] = useState('guest'); 
@@ -228,40 +163,38 @@ export default function App() {
   const [activeRoleConfig, setActiveRoleConfig] = useState(ROLE_CONFIG.staff); 
   const [userProfiles, setUserProfiles] = useState({}); 
 
-  // State Form Penilaian
   const [isRevisionMode, setIsRevisionMode] = useState(false);
   const [formData, setFormData] = useState({ name: '', metrics: {} });
 
-  // State Form Project
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [projectForm, setProjectForm] = useState({ id: '', client: '', priority: 'Medium', pm: '', backup: '', sales: '', status: 'Not started', phase: 'Identifikasi', startDate: '', endDate: '', linkDoc: '', noteHistory: [] });
-  // Temp state untuk menyimpan draf catatan baru di tabel
   const [newNotesMap, setNewNotesMap] = useState({}); 
-  // State untuk multiple selection (Bulk Delete)
   const [selectedProjects, setSelectedProjects] = useState([]);
 
-  // State Filter & Search Project Tracking
   const [searchQuery, setSearchQuery] = useState('');
   const [projectFilters, setProjectFilters] = useState({ priority: '', pm: '', phase: '', status: '' });
 
-  // Init Auth Firebase
+  // Init Auth Firebase (Strict Login)
   useEffect(() => {
-    if (!auth) return;
+    if (!auth) {
+      setIsLoadingAuth(false);
+      return;
+    }
     const initAuth = async () => {
       try {
+        // Khusus Preview Canvas Token
         if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
           await signInWithCustomToken(auth, __initial_auth_token);
-        } else if (typeof __app_id !== 'undefined') {
-          await signInAnonymously(auth); 
         }
       } catch (e) {
-        console.warn("Simulator Auth:", e);
+        console.warn("Auth initialization error:", e);
       }
     };
     initAuth();
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setRealUser(currentUser);
+      setActiveUser(currentUser);
+      setIsLoadingAuth(false); // Selesai loading verifikasi login
     });
     return () => unsubscribe();
   }, []);
@@ -270,50 +203,37 @@ export default function App() {
   useEffect(() => {
     if (!activeUser || !db) return;
 
-    if (!activeUser.isAnonymous && activeUser.email) {
+    if (activeUser.email) {
       const profileData = {
         email: activeUser.email,
         displayName: activeUser.displayName || ''
       };
       if (activeUser.photoURL) profileData.photoURL = activeUser.photoURL; 
-      setDoc(getDocRef('users_profile', activeUser.email), profileData, { merge: true }).catch(console.error);
+      setDoc(getDocRef('users_profile', activeUser.email), profileData, { merge: true }).catch(e => console.error("Profile sync err:", e.message));
     }
 
     try {
       const evalColRef = getCollectionRef('kpi_evaluations');
       const unsubEvals = onSnapshot(evalColRef, (snapshot) => {
-        if (!snapshot.empty) {
-          const dbData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
-          setEvaluations(dbData);
-        } else {
-          setEvaluations(INITIAL_EVALUATIONS);
-        }
-      }, (error) => console.error("Gagal sinkronisasi Eval DB:", error));
+        if (!snapshot.empty) setEvaluations(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
+      }, (err) => console.error("Eval DB Err:", err.message));
 
       const projColRef = getCollectionRef('project_tracking');
       const unsubProjects = onSnapshot(projColRef, (snapshot) => {
-        if (!snapshot.empty) {
-          const dbData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
-          setProjects(dbData);
-        } else {
-          setProjects(INITIAL_PROJECTS);
-        }
-      }, (error) => console.error("Gagal sinkronisasi Project DB:", error));
+        if (!snapshot.empty) setProjects(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
+      }, (err) => console.error("Project DB Err:", err.message));
 
       const roleColRef = getCollectionRef('user_roles');
       const unsubRoles = onSnapshot(roleColRef, (snapshot) => {
-        const dbData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
-        setManagedRoles(dbData);
-      }, (error) => console.error("Gagal sinkronisasi Roles DB:", error));
+        setManagedRoles(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
+      }, (err) => console.error("Roles DB Err:", err.message));
 
       const profileColRef = getCollectionRef('users_profile');
       const unsubProfiles = onSnapshot(profileColRef, (snapshot) => {
         const profilesData = {};
-        snapshot.docs.forEach(doc => {
-          profilesData[doc.id] = doc.data();
-        });
+        snapshot.docs.forEach(doc => { profilesData[doc.id] = doc.data(); });
         setUserProfiles(profilesData);
-      }, (error) => console.error("Gagal sinkronisasi Profiles DB:", error));
+      }, (err) => console.error("Profiles DB Err:", err.message));
 
       return () => { unsubEvals(); unsubProjects(); unsubRoles(); unsubProfiles(); };
     } catch (err) {
@@ -321,93 +241,67 @@ export default function App() {
     }
   }, [activeUser]);
 
-  // LOGIKA PENENTUAN HAK AKSES OTOMATIS (RBAC)
+  // LOGIKA HAK AKSES
   useEffect(() => {
-    if (activeUser && !activeUser.isAnonymous) {
+    if (activeUser) {
       const email = activeUser.email?.toLowerCase() || '';
       let currentRole = 'staff';
-
       const customDbRole = managedRoles.find(r => r.id === email);
-      if (customDbRole) {
-        currentRole = customDbRole.role;
-      } 
-      else if (DEFAULT_ROLES[email]) {
-        currentRole = DEFAULT_ROLES[email];
-      }
       
-      if (email === 'nafi@kayreach.com') {
-        currentRole = 'admin';
-      }
+      if (customDbRole) currentRole = customDbRole.role;
+      else if (DEFAULT_ROLES[email]) currentRole = DEFAULT_ROLES[email];
+      
+      if (email === 'nafi@kayreach.com') currentRole = 'admin';
 
       setUserRole(currentRole);
       setActiveRoleConfig(ROLE_CONFIG[currentRole] || ROLE_CONFIG.staff);
 
       if (currentRole === 'staff') {
-        if (EMAIL_TO_PSE_MAP[email]) {
-          setStaffIdentity(EMAIL_TO_PSE_MAP[email]);
-        } else {
+        if (EMAIL_TO_PSE_MAP[email]) setStaffIdentity(EMAIL_TO_PSE_MAP[email]);
+        else {
           const match = PSE_NAMES.find(n => (activeUser.displayName || '').toLowerCase().includes(n.toLowerCase()));
           if (match) setStaffIdentity(match);
         }
       }
-
     } else {
       setUserRole('guest');
     }
   }, [activeUser, managedRoles]);
 
-  // Evaluasi Hak Akses Penghapusan Project & Modifikasi Master Project
   const canDeleteProject = ['admin', 'manager_pse'].includes(userRole);
   const canManageProjectFull = ['admin', 'manager_pse'].includes(userRole);
 
-  // Filter Project
   const visibleProjects = projects.filter(proj => {
-    if (userRole === 'staff') {
-      return proj.pm === staffIdentity || proj.backup === staffIdentity;
-    }
+    if (userRole === 'staff') return proj.pm === staffIdentity || proj.backup === staffIdentity;
     return true; 
   });
 
   const visibleEvaluations = evaluations.filter(e => {
-    if (userRole === 'staff') {
-      return e.name === staffIdentity;
-    }
+    if (userRole === 'staff') return e.name === staffIdentity;
     return true; 
   });
 
   const handleGoogleLogin = async () => {
     if (!auth) {
-      showMessage("Konfigurasi Firebase belum ada. Gunakan .env di Netlify.");
+      showMessage("Firebase belum dikonfigurasi. Periksa file .env Anda di Netlify.");
       return;
     }
     try {
       const provider = new GoogleAuthProvider();
       await signInWithPopup(auth, provider);
     } catch (error) {
-      console.error("Google Sign-In Error:", error);
-      if (error.code === 'auth/unauthorized-domain') {
-         showMessage("Google Sign-In terblokir di lingkungan preview ini. Anda otomatis masuk menggunakan Mode Simulator sebagai Admin.");
-         setMockUser({ uid: 'sim-admin-123', email: 'nafi@kayreach.com', displayName: 'Nafi (Simulator)', photoURL: '', isAnonymous: false });
-      } else {
-         showMessage("Terjadi kesalahan saat login Google: " + error.message);
-      }
+       showMessage("Login Gagal: " + error.message);
     }
   };
 
-  const handleLogout = () => {
-    setMockUser(null);
-    if (auth) auth.signOut();
-  };
+  const handleLogout = () => { if (auth) auth.signOut(); };
 
   useEffect(() => {
     setIsRevisionMode(false);
     if (formData.name) {
       const existing = evaluations.find(e => e.name === formData.name);
-      if (existing && existing.rawMetrics) {
-        setFormData(prev => ({ ...prev, metrics: JSON.parse(JSON.stringify(existing.rawMetrics)) }));
-      } else {
-        setFormData(prev => ({ ...prev, metrics: {} }));
-      }
+      if (existing && existing.rawMetrics) setFormData(prev => ({ ...prev, metrics: JSON.parse(JSON.stringify(existing.rawMetrics)) }));
+      else setFormData(prev => ({ ...prev, metrics: {} }));
     }
   }, [formData.name, evaluations, activeRoleConfig]);
 
@@ -421,166 +315,205 @@ export default function App() {
     return SCORING_RULES[4];
   };
 
+  const calculateStatsForForm = (metricsData, roleCfg) => {
+    let totals = { kuantitatif: 0, kualitatif: 0, pengembangan: 0, kultur: 0 };
+    let counts = { kuantitatif: 0, kualitatif: 0, pengembangan: 0, kultur: 0 };
+    
+    Object.entries(METRICS_CONFIG).forEach(([catId, category]) => {
+        category.items.forEach(item => {
+            const itemData = metricsData[catId]?.[item.id] || {};
+            let val = 0;
+            if (category.type === 'auto') {
+                if (itemData.realisasi) val = Math.min((Number(itemData.realisasi) / item.target) * 10, 10);
+                else if (itemData.skor) val = itemData.skor;
+            } else val = itemData[roleCfg.scoreKey] || itemData.skor;
+            if (val && Number(val) > 0) { totals[catId] += Number(val); counts[catId]++; }
+        });
+    });
+
+    const averages = {
+      kuantitatif: counts.kuantitatif ? (totals.kuantitatif / counts.kuantitatif) : 0,
+      kualitatif: counts.kualitatif ? (totals.kualitatif / counts.kualitatif) : 0,
+      pengembangan: counts.pengembangan ? (totals.pengembangan / counts.pengembangan) : 0,
+      kultur: counts.kultur ? (totals.kultur / counts.kultur) : 0,
+    };
+    const finalScore = 
+      (averages.kuantitatif * METRICS_CONFIG.kuantitatif.weight) +
+      (averages.kualitatif * METRICS_CONFIG.kualitatif.weight) +
+      (averages.pengembangan * METRICS_CONFIG.pengembangan.weight) +
+      (averages.kultur * METRICS_CONFIG.kultur.weight);
+    return { averages, finalScore };
+  };
+
   const handleAddNoteToProject = async (projectId) => {
     const draftText = newNotesMap[projectId];
     if (!draftText || !draftText.trim()) return;
-    if (!activeUser || userRole === 'guest') {
-      showMessage('Harap Sign-In terlebih dahulu untuk menambahkan catatan!'); return;
-    }
 
-    const projectTarget = projects.find(p => p.id === projectId);
     const newNoteObj = {
       text: draftText.trim(),
       timestamp: new Date().toISOString(),
-      author: activeUser?.displayName || activeUser?.email || 'User'
+      author: activeUser?.displayName || activeUser?.email || 'Anonymous'
     };
 
+    const projectTarget = projects.find(p => p.id === projectId);
     const updatedHistory = [...(projectTarget.noteHistory || []), newNoteObj];
-    await handleInlineProjectUpdate(projectId, 'noteHistory', updatedHistory);
 
-    // Clear draf setelah sukses
-    setNewNotesMap(prev => ({...prev, [projectId]: ''}));
+    // Optimistic UI Update (Langsung tampil tanpa nunggu db)
+    setProjects(prev => prev.map(p => p.id === projectId ? { ...p, noteHistory: updatedHistory, lastUpdatedBy: newNoteObj.author } : p));
+    setNewNotesMap(prev => ({...prev, [projectId]: ''})); // Clear form
+
+    if (db) {
+      try {
+        await setDoc(getDocRef('project_tracking', projectId), { ...projectTarget, noteHistory: updatedHistory, lastUpdatedBy: newNoteObj.author });
+      } catch (e) {
+        showMessage("Simpan Catatan Gagal! Periksa Firebase Rules Anda.\nError: " + e.message);
+      }
+    } else {
+      showMessage("Firebase Database tidak terhubung.");
+    }
   };
 
   const handleSaveProject = async () => {
-    if (!activeUser || userRole === 'guest') {
-      showMessage('Harap Sign-In terlebih dahulu!'); return;
-    }
     if (!projectForm.client || !projectForm.pm) {
       showMessage('Nama Client dan PM Wajib diisi!'); return;
     }
 
-    const newProject = { ...projectForm, lastUpdatedBy: activeUser?.displayName || activeUser?.email || 'System' };
+    const newProject = { ...projectForm, lastUpdatedBy: activeUser?.displayName || activeUser?.email || 'Anonymous' };
     if (!newProject.id) newProject.id = Date.now().toString();
 
-    // Jika ada catatan draf di modal, langsung konversi ke history pertama
     if (newProject.newDraftNote && newProject.newDraftNote.trim()) {
       newProject.noteHistory = [...(newProject.noteHistory || []), {
          text: newProject.newDraftNote.trim(),
          timestamp: new Date().toISOString(),
-         author: activeUser?.displayName || activeUser?.email || 'User'
+         author: newProject.lastUpdatedBy
       }];
     }
-    delete newProject.newDraftNote; // hapus state sementara
+    delete newProject.newDraftNote;
+
+    // Optimistic Update
+    setProjects(prev => {
+      const idx = prev.findIndex(p => p.id === newProject.id);
+      if (idx >= 0) { const up = [...prev]; up[idx] = newProject; return up; }
+      return [newProject, ...prev];
+    });
+    
+    // UI Validation Success -> Reset Form & Tutup Modal
+    setIsProjectModalOpen(false); 
+    setProjectForm({ id: '', client: '', priority: 'Medium', pm: '', backup: '', sales: '', status: 'Not started', phase: 'Identifikasi', startDate: '', endDate: '', linkDoc: '', noteHistory: [] });
 
     if (db) {
       try {
         await setDoc(getDocRef('project_tracking', newProject.id), newProject);
-        setIsProjectModalOpen(false);
-        setProjectForm({ id: '', client: '', priority: 'Medium', pm: '', backup: '', sales: '', status: 'Not started', phase: 'Identifikasi', startDate: '', endDate: '', linkDoc: '', noteHistory: [] });
       } catch (error) {
-        showMessage("Gagal menyimpan Project.");
+        showMessage("Simpan Form Gagal! Firebase Permissions ditolak.\nError: " + error.message);
       }
     }
   };
 
   const handleDeleteProject = (id) => {
     showConfirm('Anda yakin ingin menghapus project ini secara permanen?', async () => {
-      if (db && canDeleteProject) {
-        await deleteDoc(getDocRef('project_tracking', id));
-        // Hilangkan dari seleksi jika kebetulan terseleksi
+      if (canDeleteProject && db) {
+        setProjects(prev => prev.filter(p => p.id !== id));
         setSelectedProjects(prev => prev.filter(pid => pid !== id));
+        try {
+          await deleteDoc(getDocRef('project_tracking', id));
+        } catch(e) {
+          showMessage("Hapus Data Gagal: " + e.message);
+        }
       }
     });
   };
 
   const handleBulkDeleteProjects = () => {
     if (selectedProjects.length === 0) return;
-    showConfirm(`Anda yakin ingin menghapus ${selectedProjects.length} project terpilih secara permanen? Data yang dihapus tidak dapat dikembalikan.`, async () => {
-      if (db && canDeleteProject) {
+    showConfirm(`Hapus ${selectedProjects.length} project terpilih secara permanen?`, async () => {
+      if (canDeleteProject && db) {
+        setProjects(prev => prev.filter(p => !selectedProjects.includes(p.id)));
+        const idsToDelete = [...selectedProjects];
+        setSelectedProjects([]);
         try {
-          const deletePromises = selectedProjects.map(id => deleteDoc(getDocRef('project_tracking', id)));
-          await Promise.all(deletePromises);
-          setSelectedProjects([]); // Bersihkan seleksi setelah berhasil
+          await Promise.all(idsToDelete.map(id => deleteDoc(getDocRef('project_tracking', id))));
         } catch (error) {
-          console.error("Gagal melakukan Bulk Delete:", error);
-          showMessage("Terjadi kesalahan saat menghapus beberapa project.");
+          showMessage("Gagal melakukan Bulk Delete: " + error.message);
         }
       }
     });
   };
 
   const handleSelectAllProjects = (e, currentDisplayData) => {
-    if (e.target.checked) {
-      setSelectedProjects(currentDisplayData.map(p => p.id));
-    } else {
-      setSelectedProjects([]);
-    }
+    if (e.target.checked) setSelectedProjects(currentDisplayData.map(p => p.id));
+    else setSelectedProjects([]);
   };
 
   const handleSelectProject = (id) => {
-    if (selectedProjects.includes(id)) {
-      setSelectedProjects(selectedProjects.filter(pid => pid !== id));
-    } else {
-      setSelectedProjects([...selectedProjects, id]);
-    }
+    if (selectedProjects.includes(id)) setSelectedProjects(selectedProjects.filter(pid => pid !== id));
+    else setSelectedProjects([...selectedProjects, id]);
   };
 
   const handleInlineProjectUpdate = async (id, field, value) => {
-    if (!activeUser || userRole === 'guest') {
-      showMessage('Silakan Sign-In terlebih dahulu!'); return;
-    }
-    const updatedProjects = projects.map(p => {
-      if (p.id === id) return { ...p, [field]: value, lastUpdatedBy: activeUser?.displayName || activeUser?.email || 'System' };
+    let updatedItemObj = null;
+    setProjects(prev => prev.map(p => {
+      if (p.id === id) {
+        updatedItemObj = { ...p, [field]: value, lastUpdatedBy: activeUser?.displayName || activeUser?.email || 'Anonymous' };
+        return updatedItemObj;
+      }
       return p;
-    });
-    setProjects(updatedProjects); 
+    })); 
 
-    if (db) {
+    if (db && updatedItemObj) {
       try {
-        const targetProj = updatedProjects.find(p => p.id === id);
-        // Pastikan membawa value terbaru
-        await setDoc(getDocRef('project_tracking', id), { ...targetProj, [field]: value, lastUpdatedBy: activeUser?.displayName || activeUser?.email || 'System' }); 
+        await setDoc(getDocRef('project_tracking', id), updatedItemObj); 
       } catch (error) {
-        console.error("Gagal update inline:", error);
+        showMessage("Inline Update Gagal: " + error.message);
       }
     }
   };
 
   const handleSaveUserRole = async (e) => {
     e.preventDefault();
-    if (!activeUser || userRole !== 'admin') return;
+    if (userRole !== 'admin') return;
 
     const formEmail = e.target.email.value.toLowerCase().trim();
     const roleValue = e.target.role.value;
 
-    if (!formEmail || !formEmail.includes('@')) {
-      showMessage("Format email tidak valid!"); return;
-    }
-    if (formEmail === 'nafi@kayreach.com') {
-      showMessage("Email Owner/Admin utama tidak bisa diubah perannya."); return;
-    }
+    if (!formEmail || !formEmail.includes('@')) { showMessage("Format email tidak valid!"); return; }
+    if (formEmail === 'nafi@kayreach.com') { showMessage("Email Owner utama tidak bisa diubah."); return; }
+
+    const roleData = {
+      id: formEmail, email: formEmail, role: roleValue,
+      lastUpdatedBy: activeUser?.email || 'System', updatedAt: new Date().toISOString()
+    };
+
+    setManagedRoles(prev => {
+      const idx = prev.findIndex(r => r.id === formEmail);
+      if(idx >= 0) { const up = [...prev]; up[idx] = roleData; return up; }
+      return [...prev, roleData];
+    });
+    e.target.reset();
 
     if (db) {
       try {
-        await setDoc(getDocRef('user_roles', formEmail), {
-          id: formEmail,
-          email: formEmail,
-          role: roleValue,
-          lastUpdatedBy: activeUser?.email || 'System',
-          updatedAt: new Date().toISOString()
-        });
-        showMessage(`Hak akses untuk ${formEmail} berhasil disetel menjadi ${roleValue.toUpperCase()}`);
-        e.target.reset();
+        await setDoc(getDocRef('user_roles', formEmail), roleData);
       } catch (error) {
-        showMessage("Gagal menyimpan role ke database.");
+        showMessage("Gagal menyimpan role: " + error.message);
       }
     }
   };
 
   const handleDeleteUserRole = (emailToDelete) => {
-    showConfirm(`Hapus kustomisasi role untuk ${emailToDelete}? Hak akses mereka akan kembali menjadi Default (Staff).`, async () => {
-      if (db && userRole === 'admin') {
+    showConfirm(`Hapus kustomisasi role untuk ${emailToDelete}?`, async () => {
+      if (userRole === 'admin' && db) {
+        setManagedRoles(prev => prev.filter(r => r.id !== emailToDelete));
         try {
           await deleteDoc(getDocRef('user_roles', emailToDelete));
         } catch (error) {
-          console.error("Gagal menghapus role", error);
+          showMessage("Gagal menghapus role: " + error.message);
         }
       }
     });
   };
 
-  const handleSimpanFormClick = () => {
+  const handleSimpanFormClick = async () => {
     let isMissingMandatoryQuant = false;
     let isMissingMandatoryOther = false;
 
@@ -599,21 +532,51 @@ export default function App() {
     }
 
     if (isMissingMandatoryQuant || isMissingMandatoryOther) {
-      showMessage("Terdapat field WAJIB yang belum diisi. Mohon lengkapi semua metrik penilaian sesuai dengan hak akses Anda sebelum menyimpan.");
-      return;
+      showMessage("Terdapat field WAJIB yang belum diisi."); return;
     }
-    showMessage("Data divalidasi dengan sukses! (Fitur push to database sedang diproses dalam versi selanjutnya)");
+    
+    const stats = calculateStatsForForm(formData.metrics, activeRoleConfig);
+    const scoreInfo = getScoreInfo(stats.finalScore);
+    const newEvalData = {
+       id: `eval_${Date.now()}`,
+       name: formData.name,
+       scores: stats.averages,
+       finalScore: stats.finalScore,
+       status: scoreInfo.label,
+       rawMetrics: formData.metrics,
+       submittedRoles: [activeRoleConfig.id] 
+    };
+
+    setEvaluations(prev => {
+       const idx = prev.findIndex(e => e.name === formData.name);
+       if (idx >= 0) {
+          const updated = [...prev];
+          newEvalData.id = updated[idx].id;
+          newEvalData.submittedRoles = [...new Set([...(updated[idx].submittedRoles || []), activeRoleConfig.id])];
+          updated[idx] = { ...updated[idx], ...newEvalData };
+          return updated;
+       }
+       return [newEvalData, ...prev];
+    });
+
+    showMessage("Nilai KPI Berhasil Disimpan!");
+    setFormData({ name: '', metrics: {} });
+    setActiveTab('dashboard'); // Pindah ke dashboard setelah simpan
+
+    if (db) {
+      try {
+        await setDoc(getDocRef('kpi_evaluations', newEvalData.id), newEvalData);
+      } catch(e) {
+        showMessage("Gagal menyimpan KPI ke database: " + e.message);
+      }
+    }
   };
 
   const downloadCSV = (headers, rows, filename) => {
-    const csvContent = [headers, ...rows]
-      .map(row => row.map(val => `"${String(val || '').replace(/"/g, '""')}"`).join(','))
-      .join('\n');
+    const csvContent = [headers, ...rows].map(row => row.map(val => `"${String(val || '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    link.click();
+    link.href = URL.createObjectURL(blob); link.download = filename; link.click();
   };
 
   const handleExportKPI = () => {
@@ -626,12 +589,10 @@ export default function App() {
   };
 
   const handleExportProjects = () => {
-    const headers = ['ID Sistem', 'Nama Klien / Project', 'Prioritas', 'PM (Primary PSE)', 'Backup PSE', 'Sales', 'Start Date', 'Estimation End Date', 'Fase / Milestone', 'Status', 'Riwayat Catatan (Gabungan)', 'Link Dokumentasi', 'Terakhir Diupdate'];
+    const headers = ['ID Sistem', 'Nama Klien / Project', 'Prioritas', 'PM (Primary PSE)', 'Backup PSE', 'Sales', 'Start Date', 'Estimation End Date', 'Fase / Milestone', 'Status', 'Riwayat Catatan', 'Link Dokumentasi', 'Terakhir Diupdate'];
     const rows = projects.map(p => {
       const notesMerged = p.noteHistory?.map(n => `[${new Date(n.timestamp).toLocaleDateString()}] ${n.author}: ${n.text}`).join(' | ') || '-';
-      return [
-        p.id, p.client, p.priority, p.pm, p.backup, p.sales || '-', p.startDate || '-', p.endDate || '-', p.phase, p.status, notesMerged, p.linkDoc || '-', p.lastUpdatedBy || '-'
-      ]
+      return [ p.id, p.client, p.priority, p.pm, p.backup, p.sales || '-', p.startDate || '-', p.endDate || '-', p.phase, p.status, notesMerged, p.linkDoc || '-', p.lastUpdatedBy || '-' ];
     });
     downloadCSV(headers, rows, "Project_Monitoring_Export.csv");
   };
@@ -640,19 +601,11 @@ export default function App() {
     const file = e.target.files[0];
     if (!file) return;
 
-    if (!activeUser || userRole === 'guest') {
-      showMessage('Anda harus Sign-In dan memiliki hak akses untuk mengimpor data!');
-      e.target.value = null; return;
-    }
-
     try {
       if (!window.XLSX) {
         await new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-          script.onload = resolve;
-          script.onerror = () => reject(new Error('Gagal memuat library Excel'));
-          document.body.appendChild(script);
+          const script = document.createElement('script'); script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+          script.onload = resolve; script.onerror = () => reject(new Error('Gagal memuat library Excel')); document.body.appendChild(script);
         });
       }
 
@@ -661,8 +614,7 @@ export default function App() {
         try {
           const data = new Uint8Array(evt.target.result);
           const workbook = window.XLSX.read(data, { type: 'array' });
-          const firstSheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[firstSheetName];
+          const worksheet = workbook.Sheets[workbook.SheetNames[0]];
           const jsonRows = window.XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: "" });
 
           if (jsonRows.length === 0) { showMessage("File kosong atau format salah."); return; }
@@ -670,28 +622,23 @@ export default function App() {
           const mapPseName = (val) => {
             if (!val || typeof val !== 'string') return '';
             const v = val.toLowerCase();
-            if (v.includes('hidayat') || v.includes('dayat')) return 'Dayat';
+            if (v.includes('dayat') || v.includes('hidayat')) return 'Dayat';
             if (v.includes('yanuar')) return 'Yanuar';
-            if (v.includes('arfindo') || v.includes('laksono')) return 'Arfindo';
-            if (v.includes('damardjati') || v.includes('supadjar')) return 'Damardjati';
+            if (v.includes('arfindo')) return 'Arfindo';
+            if (v.includes('damardjati')) return 'Damardjati';
             if (v.includes('kuncoro')) return 'Eko Kuncoro';
-            if (v.includes('fakhri') || v.includes('febrianto')) return 'Fakhri';
-            if (v.includes('ghazy') || v.includes('dzulfaqar')) return 'Ghazy';
-            if (v.includes('pankaj') || v.includes('asgus')) return 'Pankaj';
-            if (v.includes('syamil') || v.includes('umairha')) return 'Syamil';
+            if (v.includes('fakhri')) return 'Fakhri';
+            if (v.includes('ghazy')) return 'Ghazy';
+            if (v.includes('pankaj')) return 'Pankaj';
+            if (v.includes('syamil')) return 'Syamil';
             if (v.includes('hakim')) return 'Hakim';
-            if (v.includes('tyan')) return 'Tyan';
-            if (v.includes('reisya')) return 'Reisya';
             return val.split(' ')[0]; 
           };
 
           const parseExcelDate = (val) => {
              if (!val) return '';
              if (val.match(/^\d{4}-\d{2}-\d{2}$/)) return val;
-             try {
-                const d = new Date(val);
-                if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
-             } catch(e) {}
+             try { const d = new Date(val); if (!isNaN(d.getTime())) return d.toISOString().split('T')[0]; } catch(e) {}
              return '';
           };
 
@@ -736,39 +683,35 @@ export default function App() {
             if (existingIndex >= 0) {
               const oldNotes = newProjectsList[existingIndex].noteHistory || [];
               if (initialNoteHistory.length > 0) newProj.noteHistory = [...oldNotes, ...initialNoteHistory];
-              else newProj.noteHistory = oldNotes;
-
               newProjectsList[existingIndex] = { ...newProjectsList[existingIndex], ...newProj };
             } else {
               newProjectsList.push(newProj);
             }
 
-            if (db) {
-              firestorePromises.push(setDoc(getDocRef('project_tracking', newProj.id), newProj));
-            }
+            if (db) firestorePromises.push(setDoc(getDocRef('project_tracking', newProj.id), newProj));
             importedCount++;
           }
 
-          if (firestorePromises.length > 0) await Promise.all(firestorePromises);
-          setProjects(newProjectsList);
-          showMessage(`Berhasil! ${importedCount} project sukses diimpor dari file Excel Anda. Data telah dipetakan ke sistem.`);
+          setProjects(newProjectsList); // Optimistic Update UI
+          if (firestorePromises.length > 0 && db) {
+             try { await Promise.all(firestorePromises); }
+             catch(e) { showMessage("Gagal Push ke Firebase (sebagian/semua): " + e.message); }
+          }
+          showMessage(`Berhasil! ${importedCount} project sukses diimpor dan dipetakan.`);
         } catch (error) {
-          console.error("Parse Error:", error);
           showMessage("Terjadi kesalahan saat membaca file. Pastikan format file sesuai.");
         }
         e.target.value = null; 
       };
       reader.readAsArrayBuffer(file);
     } catch (err) {
-      console.error("Lib Load Error:", err);
-      showMessage("Gagal memuat library pemroses Excel. Periksa koneksi internet Anda.");
+      showMessage("Gagal memuat library pemroses Excel.");
       e.target.value = null;
     }
   };
 
 
   // --- RENDERERS ---
-
   const renderDialog = () => {
     if (!dialog) return null;
     return (
@@ -778,7 +721,7 @@ export default function App() {
             {dialog.type === 'confirm' ? <AlertCircle className="text-orange-500 mr-2"/> : <AlertCircle className="text-blue-500 mr-2"/>}
             {dialog.type === 'confirm' ? 'Konfirmasi Aksi' : 'Informasi Sistem'}
           </h3>
-          <p className="text-sm text-gray-600 mb-6 leading-relaxed">{dialog.message}</p>
+          <p className="text-sm text-gray-600 mb-6 leading-relaxed whitespace-pre-line">{dialog.message}</p>
           <div className="flex justify-end gap-3">
             {dialog.type === 'confirm' && (
               <button onClick={() => setDialog(null)} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Batal</button>
@@ -787,7 +730,7 @@ export default function App() {
               if (dialog.type === 'confirm' && dialog.onConfirm) dialog.onConfirm();
               setDialog(null);
             }} className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors">
-              {dialog.type === 'confirm' ? 'Ya, Lanjutkan' : 'Mengerti'}
+              {dialog.type === 'confirm' ? 'Ya, Lanjutkan' : 'Tutup'}
             </button>
           </div>
         </div>
@@ -1217,7 +1160,7 @@ export default function App() {
                                value={newNotesMap[proj.id] || ''} 
                                onChange={(e) => setNewNotesMap({...newNotesMap, [proj.id]: e.target.value})} 
                                onKeyDown={(e) => e.key === 'Enter' && handleAddNoteToProject(proj.id)} 
-                               placeholder="Ketik update progres..." 
+                               placeholder="Ketik update progres (Enter)..." 
                                className="text-xs w-full border border-gray-300 rounded-lg px-3 py-1.5 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm" 
                              />
                              <button onClick={() => handleAddNoteToProject(proj.id)} disabled={!newNotesMap[proj.id]} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-3 py-1.5 rounded-lg border border-transparent transition shadow-sm" title="Simpan Catatan">
@@ -1381,9 +1324,7 @@ export default function App() {
 
     const getProfilePhoto = (pseName) => {
       const email = Object.keys(EMAIL_TO_PSE_MAP).find(e => EMAIL_TO_PSE_MAP[e] === pseName);
-      if (email && userProfiles[email] && userProfiles[email].photoURL) {
-        return userProfiles[email].photoURL;
-      }
+      if (email && userProfiles[email] && userProfiles[email].photoURL) return userProfiles[email].photoURL;
       if (activeUser && staffIdentity === pseName && activeUser.photoURL) return activeUser.photoURL;
       return null;
     };
@@ -1547,47 +1488,7 @@ export default function App() {
     const hasSubmitted = currentEval?.submittedRoles?.includes(activeRoleConfig.id);
     const isLocked = hasSubmitted && !isRevisionMode;
 
-    const liveStats = (() => {
-        let totals = { kuantitatif: 0, kualitatif: 0, pengembangan: 0, kultur: 0 };
-        let counts = { kuantitatif: 0, kualitatif: 0, pengembangan: 0, kultur: 0 };
-        
-        Object.entries(METRICS_CONFIG).forEach(([catId, category]) => {
-            category.items.forEach(item => {
-                const itemData = formData.metrics[catId]?.[item.id] || {};
-                let val = 0;
-                
-                if (category.type === 'auto') {
-                    if (itemData.realisasi) {
-                       val = (Number(itemData.realisasi) / item.target) * 10;
-                       if (val > 10) val = 10; 
-                    } else if (itemData.skor) {
-                       val = itemData.skor;
-                    }
-                } else {
-                    val = itemData[activeRoleConfig.scoreKey] || itemData.skor;
-                }
-
-                if (val && Number(val) > 0) { 
-                    totals[catId] += Number(val); 
-                    counts[catId]++; 
-                }
-            });
-        });
-
-        const averages = {
-          kuantitatif: counts.kuantitatif ? (totals.kuantitatif / counts.kuantitatif) : 0,
-          kualitatif: counts.kualitatif ? (totals.kualitatif / counts.kualitatif) : 0,
-          pengembangan: counts.pengembangan ? (totals.pengembangan / counts.pengembangan) : 0,
-          kultur: counts.kultur ? (totals.kultur / counts.kultur) : 0,
-        };
-        const finalScore = 
-          (averages.kuantitatif * METRICS_CONFIG.kuantitatif.weight) +
-          (averages.kualitatif * METRICS_CONFIG.kualitatif.weight) +
-          (averages.pengembangan * METRICS_CONFIG.pengembangan.weight) +
-          (averages.kultur * METRICS_CONFIG.kultur.weight);
-        return { averages, finalScore };
-    })();
-    
+    const liveStats = calculateStatsForForm(formData.metrics, activeRoleConfig);
     const liveScoreInfo = getScoreInfo(liveStats.finalScore);
 
     return (
@@ -1755,6 +1656,60 @@ export default function App() {
     );
   };
 
+  // --- RENDERING TAMPILAN UTAMA ---
+  
+  // 1. Loading State (Menunggu Firebase memverifikasi session)
+  if (isLoadingAuth) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+        <p className="text-gray-500 font-medium animate-pulse">Memuat sistem keamanan...</p>
+      </div>
+    );
+  }
+
+  // 2. Layar Khusus Login (Jika user tidak terdeteksi)
+  if (!activeUser) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
+        {renderDialog()}
+        <div className="bg-white max-w-md w-full rounded-3xl shadow-xl border border-blue-100 overflow-hidden animate-in zoom-in-95 duration-300">
+          <div className="bg-blue-600 p-8 text-center relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+            <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg transform -rotate-6 relative z-10">
+              <BarChart3 size={32} className="text-blue-600" />
+            </div>
+            <h1 className="text-2xl font-black text-white tracking-tight relative z-10">PSE Workspace</h1>
+            <p className="text-blue-100 text-sm mt-1 font-medium relative z-10">Project Monitoring & KPI Hub</p>
+          </div>
+          <div className="p-8 text-center">
+            <h2 className="text-gray-800 font-bold text-lg mb-2">Selamat Datang</h2>
+            <p className="text-gray-500 text-sm mb-8 leading-relaxed">Silakan masuk menggunakan akun Google (Email Perusahaan) Anda untuk mengakses sistem ini.</p>
+            
+            <button 
+              onClick={handleGoogleLogin} 
+              className="w-full flex items-center justify-center px-6 py-3.5 bg-white border-2 border-gray-200 hover:border-blue-500 hover:bg-blue-50 rounded-xl text-gray-700 font-bold transition-all shadow-sm group"
+            >
+              <svg className="w-5 h-5 mr-3 group-hover:scale-110 transition-transform" viewBox="0 0 24 24">
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+              </svg>
+              Sign In dengan Google
+            </button>
+          </div>
+          <div className="bg-gray-50 p-4 text-center border-t border-gray-100">
+            <p className="text-xs text-gray-400 font-medium flex items-center justify-center">
+              <Lock size={12} className="mr-1.5"/> Akses dibatasi hanya untuk internal.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. Layar Utama (Jika user sudah Login)
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-gray-900 pb-12 relative">
       {renderDialog()}
@@ -1794,26 +1749,21 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-4 md:border-l md:border-gray-300 md:pl-6">
-              {activeUser && !activeUser.isAnonymous ? (
-                <div className="flex items-center gap-3 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
-                  <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs uppercase overflow-hidden shadow-sm">
-                    {activeUser.photoURL ? <img src={activeUser.photoURL} alt="Avatar" /> : String(activeUser.displayName || activeUser.email || 'U').charAt(0)}
-                  </div>
-                  <div className="flex flex-col hidden sm:flex">
-                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{activeRoleConfig.label}</span>
-                    <span className="text-xs font-black text-blue-700 truncate max-w-[120px]">{activeUser.displayName || activeUser.email || 'User'}</span>
-                  </div>
-                  <button onClick={handleLogout} className="ml-2 text-gray-400 hover:text-red-500 transition-colors" title="Logout">
-                    <LogOut size={16} />
-                  </button>
+              {/* Blok Profil User yang sudah login */}
+              <div className="flex items-center gap-3 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
+                <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs uppercase overflow-hidden shadow-sm">
+                  {activeUser.photoURL ? <img src={activeUser.photoURL} alt="Avatar" /> : String(activeUser.displayName || activeUser.email || 'U').charAt(0)}
                 </div>
-              ) : (
-                <button onClick={handleGoogleLogin} className="flex items-center px-4 py-2 bg-white border border-gray-300 rounded-lg shadow-sm hover:bg-gray-50 transition-colors text-sm font-bold text-gray-700">
-                   Sign In Google
+                <div className="flex flex-col hidden sm:flex">
+                  <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{activeRoleConfig.label}</span>
+                  <span className="text-xs font-black text-blue-700 truncate max-w-[120px]">{activeUser.displayName || activeUser.email || 'User'}</span>
+                </div>
+                <button onClick={handleLogout} className="ml-2 text-gray-400 hover:text-red-500 transition-colors" title="Logout">
+                  <LogOut size={16} />
                 </button>
-              )}
+              </div>
 
-              {activeUser && userRole === 'staff' && !EMAIL_TO_PSE_MAP[activeUser?.email?.toLowerCase() || ''] && (
+              {userRole === 'staff' && !EMAIL_TO_PSE_MAP[activeUser?.email?.toLowerCase() || ''] && (
                 <div className="flex flex-col border-l border-gray-300 pl-4 hidden md:flex animate-in zoom-in">
                   <span className="text-[10px] text-red-500 font-bold uppercase tracking-wider">Identitas Anda:</span>
                   <select value={staffIdentity} onChange={(e) => setStaffIdentity(e.target.value)} className="bg-red-50 border border-red-200 rounded px-1 text-xs font-black text-red-700 cursor-pointer outline-none">
