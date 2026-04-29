@@ -19,14 +19,13 @@ import {
   Users, BarChart3, FileEdit, Save, AlertCircle, TrendingUp, Award, 
   Activity, PieChart, ShieldCheck, UserCircle, Crown, X, 
   FileText, Search, LogOut, Briefcase, Plus, ListTodo, RefreshCw, Trash2, 
-  Download, Upload, Lock, Settings, UserCog, ShieldAlert, Send
+  Download, Upload, Lock, Settings, UserCog, ShieldAlert, Send, Printer, CheckCircle2
 } from 'lucide-react';
 
 // --- INIT FIREBASE ---
 let app, auth, db;
 
 try {
-  // Mode Netlify menggunakan VITE_ env variables
   if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_API_KEY) {
     app = initializeApp({
       apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -37,7 +36,6 @@ try {
       appId: import.meta.env.VITE_FIREBASE_APP_ID
     });
   } 
-  // Mode Canvas / Preview 
   else if (typeof __firebase_config !== 'undefined' && __firebase_config) {
     app = initializeApp(JSON.parse(__firebase_config));
   }
@@ -50,7 +48,6 @@ try {
   console.error('Firebase Setup Error:', error);
 }
 
-// Fungsi bantu referensi koleksi & dokumen (menyesuaikan environment)
 const getCollectionRef = (colName) => {
   if (typeof __app_id !== 'undefined') return collection(db, 'artifacts', __app_id, 'public', 'data', colName);
   return collection(db, colName); 
@@ -114,12 +111,13 @@ const SCORING_RULES = [
 
 const METRICS_CONFIG = {
   kuantitatif: {
-    title: 'A. KPI Kuantitatif', weight: 0.40, type: 'auto',
+    title: 'A. KPI Kuantitatif (Otomatis dari Tracker)', weight: 0.40, type: 'auto',
+    desc: 'Berdasarkan rekap project yang dihandle sebagai PM atau Backup',
     items: [
-      { id: 'q1', label: 'Pipeline Generation', target: 5, unit: 'Opp/bln' },
-      { id: 'q2', label: 'Win Rate', target: 30, unit: '%' },
-      { id: 'q3', label: 'Proposal / RFP Submitted', target: 4, unit: '/bln' },
-      { id: 'q4', label: 'Demo / PoC Conducted', target: 3, unit: '/bln' }
+      { id: 'q1', label: 'Pipeline / Project Terlibat', target: 5, unit: 'Project' },
+      { id: 'q2', label: 'Win Rate (Completed)', target: 30, unit: '%' },
+      { id: 'q3', label: 'Proposal / RFP / Penawaran', target: 4, unit: 'Project' },
+      { id: 'q4', label: 'Demo / PoC / Instalasi', target: 3, unit: 'Project' }
     ]
   },
   kualitatif: {
@@ -128,7 +126,7 @@ const METRICS_CONFIG = {
   },
   pengembangan: {
     title: 'C. Pengembangan Diri', weight: 0.20, type: 'manual',
-    items: [ { id: 'p1', label: 'Sertifikasi' }, { id: 'p2', label: 'Training / Workshop' }, { id: 'p3', label: 'Internal Knowledge Sharing' } ]
+    items: [ { id: 'p1', label: 'Sertifikasi / Exam' }, { id: 'p2', label: 'Training / Workshop' }, { id: 'p3', label: 'Internal Knowledge Sharing' } ]
   },
   kultur: {
     title: 'D. KPI Kultur', weight: 0.20, type: 'manual',
@@ -153,7 +151,6 @@ export default function App() {
   const showMessage = (msg) => setDialog({ type: 'alert', message: msg });
   const showConfirm = (msg, onConfirmFn) => setDialog({ type: 'confirm', message: msg, onConfirm: onConfirmFn });
 
-  // Status Load Auth
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [activeUser, setActiveUser] = useState(null);
 
@@ -174,83 +171,47 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [projectFilters, setProjectFilters] = useState({ priority: '', pm: '', phase: '', status: '' });
 
-  // Init Auth Firebase (Strict Login)
   useEffect(() => {
-    if (!auth) {
-      setIsLoadingAuth(false);
-      return;
-    }
+    if (!auth) { setIsLoadingAuth(false); return; }
     const initAuth = async () => {
-      try {
-        // Khusus Preview Canvas Token
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        }
-      } catch (e) {
-        console.warn("Auth initialization error:", e);
-      }
+      try { if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) await signInWithCustomToken(auth, __initial_auth_token); } 
+      catch (e) { console.warn("Auth init error:", e); }
     };
     initAuth();
-
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setActiveUser(currentUser);
-      setIsLoadingAuth(false); // Selesai loading verifikasi login
+      setIsLoadingAuth(false); 
     });
     return () => unsubscribe();
   }, []);
 
-  // Sinkronisasi Real-Time Database 
   useEffect(() => {
     if (!activeUser || !db) return;
 
     if (activeUser.email) {
-      const profileData = {
-        email: activeUser.email,
-        displayName: activeUser.displayName || ''
-      };
+      const profileData = { email: activeUser.email, displayName: activeUser.displayName || '' };
       if (activeUser.photoURL) profileData.photoURL = activeUser.photoURL; 
-      setDoc(getDocRef('users_profile', activeUser.email), profileData, { merge: true }).catch(e => console.error("Profile sync err:", e.message));
+      setDoc(getDocRef('users_profile', activeUser.email), profileData, { merge: true }).catch(() => {});
     }
 
     try {
-      const evalColRef = getCollectionRef('kpi_evaluations');
-      const unsubEvals = onSnapshot(evalColRef, (snapshot) => {
-        if (!snapshot.empty) setEvaluations(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
-      }, (err) => console.error("Eval DB Err:", err.message));
-
-      const projColRef = getCollectionRef('project_tracking');
-      const unsubProjects = onSnapshot(projColRef, (snapshot) => {
-        if (!snapshot.empty) setProjects(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
-      }, (err) => console.error("Project DB Err:", err.message));
-
-      const roleColRef = getCollectionRef('user_roles');
-      const unsubRoles = onSnapshot(roleColRef, (snapshot) => {
-        setManagedRoles(snapshot.docs.map(doc => ({id: doc.id, ...doc.data()})));
-      }, (err) => console.error("Roles DB Err:", err.message));
-
-      const profileColRef = getCollectionRef('users_profile');
-      const unsubProfiles = onSnapshot(profileColRef, (snapshot) => {
-        const profilesData = {};
-        snapshot.docs.forEach(doc => { profilesData[doc.id] = doc.data(); });
-        setUserProfiles(profilesData);
-      }, (err) => console.error("Profiles DB Err:", err.message));
-
+      const unsubEvals = onSnapshot(getCollectionRef('kpi_evaluations'), snap => setEvaluations(snap.docs.map(doc => ({id: doc.id, ...doc.data()}))));
+      const unsubProjects = onSnapshot(getCollectionRef('project_tracking'), snap => setProjects(snap.docs.map(doc => ({id: doc.id, ...doc.data()}))));
+      const unsubRoles = onSnapshot(getCollectionRef('user_roles'), snap => setManagedRoles(snap.docs.map(doc => ({id: doc.id, ...doc.data()}))));
+      const unsubProfiles = onSnapshot(getCollectionRef('users_profile'), snap => {
+        const profilesData = {}; snap.docs.forEach(doc => profilesData[doc.id] = doc.data()); setUserProfiles(profilesData);
+      });
       return () => { unsubEvals(); unsubProjects(); unsubRoles(); unsubProfiles(); };
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
   }, [activeUser]);
 
-  // LOGIKA HAK AKSES
   useEffect(() => {
     if (activeUser) {
       const email = activeUser.email?.toLowerCase() || '';
       let currentRole = 'staff';
       const customDbRole = managedRoles.find(r => r.id === email);
-      
       if (customDbRole) currentRole = customDbRole.role;
       else if (DEFAULT_ROLES[email]) currentRole = DEFAULT_ROLES[email];
-      
       if (email === 'nafi@kayreach.com') currentRole = 'admin';
 
       setUserRole(currentRole);
@@ -263,9 +224,7 @@ export default function App() {
           if (match) setStaffIdentity(match);
         }
       }
-    } else {
-      setUserRole('guest');
-    }
+    } else setUserRole('guest');
   }, [activeUser, managedRoles]);
 
   const canDeleteProject = ['admin', 'manager_pse'].includes(userRole);
@@ -282,31 +241,45 @@ export default function App() {
   });
 
   const handleGoogleLogin = async () => {
-    if (!auth) {
-      showMessage("Firebase belum dikonfigurasi. Periksa file .env Anda di Netlify.");
-      return;
-    }
-    try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
-    } catch (error) {
-       showMessage("Login Gagal: " + error.message);
-    }
+    if (!auth) { showMessage("Firebase belum dikonfigurasi. Periksa file .env Anda."); return; }
+    try { await signInWithPopup(auth, new GoogleAuthProvider()); } catch (error) { showMessage("Login Gagal: " + error.message); }
   };
 
   const handleLogout = () => { if (auth) auth.signOut(); };
 
+  // OTOMATIS KALKULASI NILAI KUANTITATIF SAAT FORM DIBUKA/NAMA DIGANTI
   useEffect(() => {
     setIsRevisionMode(false);
     if (formData.name) {
       const existing = evaluations.find(e => e.name === formData.name);
-      if (existing && existing.rawMetrics) setFormData(prev => ({ ...prev, metrics: JSON.parse(JSON.stringify(existing.rawMetrics)) }));
-      else setFormData(prev => ({ ...prev, metrics: {} }));
+      let initialMetrics = existing && existing.rawMetrics ? JSON.parse(JSON.stringify(existing.rawMetrics)) : {};
+
+      // LOGIKA PENILAIAN OTOMATIS DARI PROJECT MONITORING
+      const userProjects = projects.filter(p => p.pm === formData.name || p.backup === formData.name);
+      const totalProjects = userProjects.length;
+      const completedCount = userProjects.filter(p => p.status === 'Completed').length;
+      const winRate = totalProjects > 0 ? (completedCount / totalProjects) * 100 : 0;
+      
+      const proposalPhases = ['Penawaran & Proposal', 'PoC & Testing', 'Instalasi', 'BAST'];
+      const pocPhases = ['PoC & Testing', 'Instalasi', 'BAST'];
+      
+      const proposalCount = userProjects.filter(p => proposalPhases.includes(p.phase) || p.status === 'Completed').length;
+      const pocCount = userProjects.filter(p => pocPhases.includes(p.phase) || p.status === 'Completed').length;
+
+      if (!initialMetrics.kuantitatif) initialMetrics.kuantitatif = {};
+      
+      // Inject otomatis nilai realisasi
+      initialMetrics.kuantitatif.q1 = { ...initialMetrics.kuantitatif.q1, realisasi: totalProjects };
+      initialMetrics.kuantitatif.q2 = { ...initialMetrics.kuantitatif.q2, realisasi: winRate.toFixed(1) };
+      initialMetrics.kuantitatif.q3 = { ...initialMetrics.kuantitatif.q3, realisasi: proposalCount };
+      initialMetrics.kuantitatif.q4 = { ...initialMetrics.kuantitatif.q4, realisasi: pocCount };
+
+      setFormData(prev => ({ ...prev, metrics: initialMetrics }));
     }
-  }, [formData.name, evaluations, activeRoleConfig]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData.name]); // Hanya triger ulang jika nama berganti untuk mencegah pengetikan field lain kereset
 
 
-  // --- LOGIC CALCULATOR & HANDLERS ---
   const getScoreInfo = (finalScore) => {
     if (finalScore >= 9) return SCORING_RULES[0];
     if (finalScore >= 7) return SCORING_RULES[1];
@@ -345,68 +318,45 @@ export default function App() {
     return { averages, finalScore };
   };
 
+  // HANDLERS PROJECT
   const handleAddNoteToProject = async (projectId) => {
     const draftText = newNotesMap[projectId];
     if (!draftText || !draftText.trim()) return;
 
-    const newNoteObj = {
-      text: draftText.trim(),
-      timestamp: new Date().toISOString(),
-      author: activeUser?.displayName || activeUser?.email || 'Anonymous'
-    };
-
+    const newNoteObj = { text: draftText.trim(), timestamp: new Date().toISOString(), author: activeUser?.displayName || activeUser?.email || 'Anonymous' };
     const projectTarget = projects.find(p => p.id === projectId);
     const updatedHistory = [...(projectTarget.noteHistory || []), newNoteObj];
 
-    // Optimistic UI Update (Langsung tampil tanpa nunggu db)
     setProjects(prev => prev.map(p => p.id === projectId ? { ...p, noteHistory: updatedHistory, lastUpdatedBy: newNoteObj.author } : p));
-    setNewNotesMap(prev => ({...prev, [projectId]: ''})); // Clear form
+    setNewNotesMap(prev => ({...prev, [projectId]: ''}));
 
     if (db) {
-      try {
-        await setDoc(getDocRef('project_tracking', projectId), { ...projectTarget, noteHistory: updatedHistory, lastUpdatedBy: newNoteObj.author });
-      } catch (e) {
-        showMessage("Simpan Catatan Gagal! Periksa Firebase Rules Anda.\nError: " + e.message);
-      }
-    } else {
-      showMessage("Firebase Database tidak terhubung.");
+      try { await setDoc(getDocRef('project_tracking', projectId), { ...projectTarget, noteHistory: updatedHistory, lastUpdatedBy: newNoteObj.author }); } 
+      catch (e) { showMessage("Simpan Catatan Gagal!\nError: " + e.message); }
     }
   };
 
   const handleSaveProject = async () => {
-    if (!projectForm.client || !projectForm.pm) {
-      showMessage('Nama Client dan PM Wajib diisi!'); return;
-    }
-
+    if (!projectForm.client || !projectForm.pm) { showMessage('Nama Client dan PM Wajib diisi!'); return; }
     const newProject = { ...projectForm, lastUpdatedBy: activeUser?.displayName || activeUser?.email || 'Anonymous' };
     if (!newProject.id) newProject.id = Date.now().toString();
-
     if (newProject.newDraftNote && newProject.newDraftNote.trim()) {
-      newProject.noteHistory = [...(newProject.noteHistory || []), {
-         text: newProject.newDraftNote.trim(),
-         timestamp: new Date().toISOString(),
-         author: newProject.lastUpdatedBy
-      }];
+      newProject.noteHistory = [...(newProject.noteHistory || []), { text: newProject.newDraftNote.trim(), timestamp: new Date().toISOString(), author: newProject.lastUpdatedBy }];
     }
     delete newProject.newDraftNote;
 
-    // Optimistic Update
     setProjects(prev => {
       const idx = prev.findIndex(p => p.id === newProject.id);
       if (idx >= 0) { const up = [...prev]; up[idx] = newProject; return up; }
       return [newProject, ...prev];
     });
     
-    // UI Validation Success -> Reset Form & Tutup Modal
     setIsProjectModalOpen(false); 
     setProjectForm({ id: '', client: '', priority: 'Medium', pm: '', backup: '', sales: '', status: 'Not started', phase: 'Identifikasi', startDate: '', endDate: '', linkDoc: '', noteHistory: [] });
 
     if (db) {
-      try {
-        await setDoc(getDocRef('project_tracking', newProject.id), newProject);
-      } catch (error) {
-        showMessage("Simpan Form Gagal! Firebase Permissions ditolak.\nError: " + error.message);
-      }
+      try { await setDoc(getDocRef('project_tracking', newProject.id), newProject); } 
+      catch (error) { showMessage("Simpan Form Gagal!\nError: " + error.message); }
     }
   };
 
@@ -415,11 +365,7 @@ export default function App() {
       if (canDeleteProject && db) {
         setProjects(prev => prev.filter(p => p.id !== id));
         setSelectedProjects(prev => prev.filter(pid => pid !== id));
-        try {
-          await deleteDoc(getDocRef('project_tracking', id));
-        } catch(e) {
-          showMessage("Hapus Data Gagal: " + e.message);
-        }
+        try { await deleteDoc(getDocRef('project_tracking', id)); } catch(e) { showMessage("Hapus Data Gagal: " + e.message); }
       }
     });
   };
@@ -431,23 +377,10 @@ export default function App() {
         setProjects(prev => prev.filter(p => !selectedProjects.includes(p.id)));
         const idsToDelete = [...selectedProjects];
         setSelectedProjects([]);
-        try {
-          await Promise.all(idsToDelete.map(id => deleteDoc(getDocRef('project_tracking', id))));
-        } catch (error) {
-          showMessage("Gagal melakukan Bulk Delete: " + error.message);
-        }
+        try { await Promise.all(idsToDelete.map(id => deleteDoc(getDocRef('project_tracking', id)))); } 
+        catch (error) { showMessage("Gagal Bulk Delete: " + error.message); }
       }
     });
-  };
-
-  const handleSelectAllProjects = (e, currentDisplayData) => {
-    if (e.target.checked) setSelectedProjects(currentDisplayData.map(p => p.id));
-    else setSelectedProjects([]);
-  };
-
-  const handleSelectProject = (id) => {
-    if (selectedProjects.includes(id)) setSelectedProjects(selectedProjects.filter(pid => pid !== id));
-    else setSelectedProjects([...selectedProjects, id]);
   };
 
   const handleInlineProjectUpdate = async (id, field, value) => {
@@ -459,31 +392,23 @@ export default function App() {
       }
       return p;
     })); 
-
     if (db && updatedItemObj) {
-      try {
-        await setDoc(getDocRef('project_tracking', id), updatedItemObj); 
-      } catch (error) {
-        showMessage("Inline Update Gagal: " + error.message);
-      }
+      try { await setDoc(getDocRef('project_tracking', id), updatedItemObj); } 
+      catch (error) { showMessage("Inline Update Gagal: " + error.message); }
     }
   };
 
+  // HANDLERS ADMIN ROLE
   const handleSaveUserRole = async (e) => {
     e.preventDefault();
     if (userRole !== 'admin') return;
 
     const formEmail = e.target.email.value.toLowerCase().trim();
     const roleValue = e.target.role.value;
-
     if (!formEmail || !formEmail.includes('@')) { showMessage("Format email tidak valid!"); return; }
     if (formEmail === 'nafi@kayreach.com') { showMessage("Email Owner utama tidak bisa diubah."); return; }
 
-    const roleData = {
-      id: formEmail, email: formEmail, role: roleValue,
-      lastUpdatedBy: activeUser?.email || 'System', updatedAt: new Date().toISOString()
-    };
-
+    const roleData = { id: formEmail, email: formEmail, role: roleValue, lastUpdatedBy: activeUser?.email || 'System', updatedAt: new Date().toISOString() };
     setManagedRoles(prev => {
       const idx = prev.findIndex(r => r.id === formEmail);
       if(idx >= 0) { const up = [...prev]; up[idx] = roleData; return up; }
@@ -492,11 +417,8 @@ export default function App() {
     e.target.reset();
 
     if (db) {
-      try {
-        await setDoc(getDocRef('user_roles', formEmail), roleData);
-      } catch (error) {
-        showMessage("Gagal menyimpan role: " + error.message);
-      }
+      try { await setDoc(getDocRef('user_roles', formEmail), roleData); } 
+      catch (error) { showMessage("Gagal menyimpan role: " + error.message); }
     }
   };
 
@@ -504,25 +426,15 @@ export default function App() {
     showConfirm(`Hapus kustomisasi role untuk ${emailToDelete}?`, async () => {
       if (userRole === 'admin' && db) {
         setManagedRoles(prev => prev.filter(r => r.id !== emailToDelete));
-        try {
-          await deleteDoc(getDocRef('user_roles', emailToDelete));
-        } catch (error) {
-          showMessage("Gagal menghapus role: " + error.message);
-        }
+        try { await deleteDoc(getDocRef('user_roles', emailToDelete)); } 
+        catch (error) { showMessage("Gagal menghapus role: " + error.message); }
       }
     });
   };
 
+  // HANDLER FORM KPI
   const handleSimpanFormClick = async () => {
-    let isMissingMandatoryQuant = false;
     let isMissingMandatoryOther = false;
-
-    if (activeRoleConfig.isQuantRequired) {
-      METRICS_CONFIG.kuantitatif.items.forEach(item => {
-        if (!formData.metrics.kuantitatif?.[item.id]?.realisasi) isMissingMandatoryQuant = true;
-      });
-    }
-
     if (activeRoleConfig.isOtherRequired) {
       ['kualitatif', 'pengembangan', 'kultur'].forEach(catId => {
         METRICS_CONFIG[catId].items.forEach(item => {
@@ -531,20 +443,13 @@ export default function App() {
       });
     }
 
-    if (isMissingMandatoryQuant || isMissingMandatoryOther) {
-      showMessage("Terdapat field WAJIB yang belum diisi."); return;
-    }
+    if (isMissingMandatoryOther) { showMessage("Terdapat skor yang WAJIB Anda isi (1-10)."); return; }
     
     const stats = calculateStatsForForm(formData.metrics, activeRoleConfig);
     const scoreInfo = getScoreInfo(stats.finalScore);
     const newEvalData = {
-       id: `eval_${Date.now()}`,
-       name: formData.name,
-       scores: stats.averages,
-       finalScore: stats.finalScore,
-       status: scoreInfo.label,
-       rawMetrics: formData.metrics,
-       submittedRoles: [activeRoleConfig.id] 
+       id: `eval_${Date.now()}`, name: formData.name, scores: stats.averages, finalScore: stats.finalScore, status: scoreInfo.label,
+       rawMetrics: formData.metrics, submittedRoles: [activeRoleConfig.id] 
     };
 
     setEvaluations(prev => {
@@ -561,22 +466,19 @@ export default function App() {
 
     showMessage("Nilai KPI Berhasil Disimpan!");
     setFormData({ name: '', metrics: {} });
-    setActiveTab('dashboard'); // Pindah ke dashboard setelah simpan
+    setActiveTab('dashboard'); 
 
     if (db) {
-      try {
-        await setDoc(getDocRef('kpi_evaluations', newEvalData.id), newEvalData);
-      } catch(e) {
-        showMessage("Gagal menyimpan KPI ke database: " + e.message);
-      }
+      try { await setDoc(getDocRef('kpi_evaluations', newEvalData.id), newEvalData); } 
+      catch(e) { showMessage("Gagal menyimpan KPI: " + e.message); }
     }
   };
 
+  // EXPORT / IMPORT
   const downloadCSV = (headers, rows, filename) => {
     const csvContent = [headers, ...rows].map(row => row.map(val => `"${String(val || '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob); link.download = filename; link.click();
+    const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = filename; link.click();
   };
 
   const handleExportKPI = () => {
@@ -684,23 +586,19 @@ export default function App() {
               const oldNotes = newProjectsList[existingIndex].noteHistory || [];
               if (initialNoteHistory.length > 0) newProj.noteHistory = [...oldNotes, ...initialNoteHistory];
               newProjectsList[existingIndex] = { ...newProjectsList[existingIndex], ...newProj };
-            } else {
-              newProjectsList.push(newProj);
-            }
+            } else newProjectsList.push(newProj);
 
             if (db) firestorePromises.push(setDoc(getDocRef('project_tracking', newProj.id), newProj));
             importedCount++;
           }
 
-          setProjects(newProjectsList); // Optimistic Update UI
+          setProjects(newProjectsList); 
           if (firestorePromises.length > 0 && db) {
              try { await Promise.all(firestorePromises); }
              catch(e) { showMessage("Gagal Push ke Firebase (sebagian/semua): " + e.message); }
           }
           showMessage(`Berhasil! ${importedCount} project sukses diimpor dan dipetakan.`);
-        } catch (error) {
-          showMessage("Terjadi kesalahan saat membaca file. Pastikan format file sesuai.");
-        }
+        } catch (error) { showMessage("Terjadi kesalahan saat membaca file. Pastikan format file sesuai."); }
         e.target.value = null; 
       };
       reader.readAsArrayBuffer(file);
@@ -715,7 +613,7 @@ export default function App() {
   const renderDialog = () => {
     if (!dialog) return null;
     return (
-      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 print:hidden">
         <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 border border-gray-200">
           <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
             {dialog.type === 'confirm' ? <AlertCircle className="text-orange-500 mr-2"/> : <AlertCircle className="text-blue-500 mr-2"/>}
@@ -745,62 +643,110 @@ export default function App() {
 
     const statusConfig = SCORING_RULES.find(r => r.label === emp.status) || SCORING_RULES[4];
     const raw = emp.rawMetrics || {};
+    const empProjects = projects.filter(p => p.pm === emp.name || p.backup === emp.name);
 
     return (
-      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 md:p-6 animate-in fade-in duration-200">
-        <div className="bg-white w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] border border-gray-200 animate-in slide-in-from-bottom-4">
-          <div className="p-5 md:p-6 border-b border-gray-100 flex justify-between items-start bg-slate-50 relative">
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 md:p-6 animate-in fade-in duration-200 print:absolute print:inset-0 print:p-0 print:bg-white print:overflow-visible">
+        <div className="bg-white w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] border border-gray-200 animate-in slide-in-from-bottom-4 print:border-none print:shadow-none print:max-h-none print:overflow-visible">
+          
+          <div className="p-5 md:p-6 border-b border-gray-100 flex justify-between items-start bg-slate-50 relative print:bg-white print:border-b-2 print:border-gray-800">
             <div className="flex items-center gap-4">
-              <div className={`w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-inner ${statusConfig.barColor}`}>
+              <div className={`w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-inner print:border print:border-gray-300 print:text-black print:bg-white ${statusConfig.barColor}`}>
                 {String(emp.name || 'U').charAt(0)}
               </div>
               <div>
-                <h2 className="text-2xl font-black text-gray-800 tracking-tight">{emp.name}</h2>
+                <h2 className="text-2xl font-black text-gray-800 tracking-tight">Rapor Kinerja: {emp.name}</h2>
+                <p className="text-sm font-semibold text-gray-500 print:text-black">Pre-Sales Engineer (PSE)</p>
               </div>
             </div>
-            <div className="text-right mr-8">
-              <p className="text-[10px] uppercase font-bold text-gray-400 tracking-widest mb-1">Skor Akhir</p>
-              <div className="flex items-center gap-3">
-                <span className="text-4xl font-black text-gray-800 leading-none">{Number(emp.finalScore || 0).toFixed(2)}</span>
-                <span className={`px-3 py-1 rounded-md text-xs font-bold shadow-sm ${statusConfig.color}`}>{emp.status}</span>
+            
+            <div className="flex gap-4 items-center mr-8 print:mr-0">
+              <div className="text-right">
+                <p className="text-[10px] uppercase font-bold text-gray-400 tracking-widest mb-1 print:text-gray-800">Skor Akhir</p>
+                <div className="flex items-center gap-3">
+                  <span className="text-4xl font-black text-gray-800 leading-none">{Number(emp.finalScore || 0).toFixed(2)}</span>
+                  <span className={`px-3 py-1 rounded-md text-xs font-bold shadow-sm print:border print:border-gray-400 ${statusConfig.color}`}>{emp.status}</span>
+                </div>
               </div>
+              <button onClick={() => window.print()} className="ml-4 flex flex-col items-center justify-center p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors print:hidden" title="Cetak / Simpan PDF">
+                <Printer size={20} className="mb-1" />
+                <span className="text-[10px] font-bold uppercase">Print</span>
+              </button>
             </div>
-            <button onClick={() => setSelectedPseDetailId(null)} className="absolute top-5 right-5 text-gray-400 hover:text-gray-800 hover:bg-gray-200 p-2 rounded-full transition-colors">
+
+            <button onClick={() => setSelectedPseDetailId(null)} className="absolute top-5 right-5 text-gray-400 hover:text-gray-800 hover:bg-gray-200 p-2 rounded-full transition-colors print:hidden">
               <X size={20} />
             </button>
           </div>
 
-          <div className="p-5 md:p-6 overflow-y-auto bg-white flex-1 space-y-8">
-            <section>
-              <div className="flex items-center gap-2 mb-4 border-b border-gray-100 pb-2">
-                <FileText className="text-blue-500" size={20} />
-                <h3 className="text-lg font-bold text-gray-800">Detail Aktivitas & Pekerjaan Kuantitatif</h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {METRICS_CONFIG.kuantitatif.items.map(item => {
-                  const data = raw.kuantitatif?.[item.id] || {};
-                  const isFilled = data.realisasi !== undefined;
-                  return (
-                    <div key={item.id} className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition">
-                      <div className="flex justify-between items-start mb-2">
-                        <p className="font-bold text-gray-700 text-sm">{item.label}</p>
-                        <span className={`text-xs font-bold px-2 py-1 rounded ${isFilled ? 'bg-blue-50 text-blue-700' : 'bg-gray-100 text-gray-400'}`}>Skor: {data.skor || '-'}</span>
-                      </div>
-                      <div className="mt-3 flex items-end gap-2">
-                        <span className="text-3xl font-black text-gray-800">{isFilled ? data.realisasi : '-'}</span>
-                        <span className="text-sm font-semibold text-gray-500 mb-1">{item.unit}</span>
-                      </div>
-                      {isFilled && (
-                        <div className="mt-4 bg-gray-50 rounded-lg p-3 text-xs text-gray-600 border border-gray-100">
-                          <p><span className="font-bold text-gray-500">Bukti:</span> {data.bukti || '-'}</p>
-                          {data.catatan && <p className="mt-1"><span className="font-bold text-gray-500">Catatan:</span> {data.catatan}</p>}
+          <div className="p-5 md:p-6 overflow-y-auto bg-white flex-1 space-y-8 print:overflow-visible">
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 print:gap-4">
+              {Object.entries(METRICS_CONFIG).map(([catId, category]) => (
+                <section key={catId} className="break-inside-avoid">
+                  <div className="flex items-center gap-2 mb-3 border-b border-gray-200 pb-2">
+                    <CheckCircle2 className="text-blue-500 print:hidden" size={18} />
+                    <h3 className="text-md font-bold text-gray-800 uppercase tracking-wide">{category.title}</h3>
+                  </div>
+                  <div className="space-y-3">
+                    {category.items.map(item => {
+                      const data = raw[catId]?.[item.id] || {};
+                      const isAuto = category.type === 'auto';
+                      const finalSkor = isAuto ? data.skor : Math.max(data.skorTop||0, data.skorManager||0, data.skorPeerManager||0, data.skorPeer||0);
+
+                      return (
+                        <div key={item.id} className="bg-gray-50 rounded-lg p-3 border border-gray-100 print:bg-white print:border-gray-300">
+                          <div className="flex justify-between items-start">
+                            <p className="font-semibold text-gray-700 text-sm">{item.label}</p>
+                            <span className="text-sm font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 print:border-none print:bg-transparent">
+                              Skor: {finalSkor || '-'} / 10
+                            </span>
+                          </div>
+                          {isAuto && data.realisasi !== undefined && (
+                            <div className="mt-1.5 flex items-end gap-1">
+                              <span className="text-xl font-bold text-gray-800 leading-none">{data.realisasi}</span>
+                              <span className="text-[10px] font-semibold text-gray-500 mb-0.5">{item.unit}</span>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                </section>
+              ))}
+            </div>
+
+            <section className="mt-8 break-inside-avoid print:mt-4">
+              <div className="flex items-center gap-2 mb-4 border-b border-gray-200 pb-2">
+                <Briefcase className="text-blue-500 print:hidden" size={20} />
+                <h3 className="text-lg font-bold text-gray-800">Daftar Project Terlibat ({empProjects.length} Project)</h3>
+              </div>
+              <div className="bg-gray-50 rounded-xl border border-gray-200 p-1 overflow-x-auto print:bg-transparent print:border-none">
+                <table className="w-full text-left text-sm text-gray-600 border-collapse">
+                  <thead className="bg-white text-gray-700 font-bold text-xs uppercase border-b border-gray-200">
+                    <tr>
+                      <th className="px-3 py-2">Nama Client / Project</th>
+                      <th className="px-3 py-2">Peran</th>
+                      <th className="px-3 py-2">Fase Saat Ini</th>
+                      <th className="px-3 py-2 text-center">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {empProjects.length > 0 ? empProjects.map((p, idx) => (
+                      <tr key={idx} className="bg-white print:bg-transparent">
+                        <td className="px-3 py-2 font-semibold text-gray-800">{p.client}</td>
+                        <td className="px-3 py-2 text-xs">{p.pm === emp.name ? <span className="text-blue-600 font-bold">PM Utama</span> : <span className="text-orange-500 font-semibold">Backup</span>}</td>
+                        <td className="px-3 py-2 text-xs">{p.phase}</td>
+                        <td className="px-3 py-2 text-center text-xs font-bold">{p.status}</td>
+                      </tr>
+                    )) : (
+                      <tr><td colSpan="4" className="text-center py-4 text-gray-400 italic">Belum ada project yang diassign ke PSE ini.</td></tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </section>
+            
           </div>
         </div>
       </div>
@@ -914,6 +860,7 @@ export default function App() {
   };
 
   const renderProjectTracking = () => {
+    // FUNGSI SORTING OTOMATIS: Berdasarkan Priority (High duluan), lalu Target End (Paling cepat duluan)
     const displayProjects = visibleProjects.filter(proj => {
       const clientName = proj.client || '';
       const matchSearch = clientName.toLowerCase().includes(searchQuery.toLowerCase());
@@ -922,6 +869,18 @@ export default function App() {
       const matchPhase = projectFilters.phase ? proj.phase === projectFilters.phase : true;
       const matchStatus = projectFilters.status ? proj.status === projectFilters.status : true;
       return matchSearch && matchPriority && matchPM && matchPhase && matchStatus;
+    }).sort((a, b) => {
+      // 1. Sort Priority
+      const priorityMap = { 'High': 1, 'Medium': 2, 'Low': 3 };
+      const pA = priorityMap[a.priority] || 4;
+      const pB = priorityMap[b.priority] || 4;
+      
+      if (pA !== pB) return pA - pB;
+
+      // 2. Sort Target End Date (Ascending / Lebih Cepat di Atas)
+      const dateA = a.endDate ? new Date(a.endDate).getTime() : Infinity;
+      const dateB = b.endDate ? new Date(b.endDate).getTime() : Infinity;
+      return dateA - dateB;
     });
 
     return (
@@ -931,10 +890,11 @@ export default function App() {
           <div className="px-6 py-5 bg-white flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h2 className="text-lg font-bold text-gray-800 flex items-center">
-                <Briefcase className="mr-2 text-blue-600" size={20}/> Database Project Monitoring
+                <Briefcase className="mr-2 text-blue-600" size={20}/> Database Project Monitoring (Ticketing)
               </h2>
-              <p className="text-xs text-gray-500 font-semibold mt-1">
-                {userRole === 'staff' ? `Menampilkan project yang ditugaskan kepada Anda (${staffIdentity || 'Belum dipilih'})` : 'Data dari tracker ini digunakan sebagai landasan perhitungan KPI Kuantitatif PSE.'}
+              <p className="text-xs text-gray-500 font-semibold mt-1 flex items-center">
+                <Activity size={12} className="mr-1 text-emerald-500"/>
+                Data terurut otomatis berdasarkan <strong className="mx-1 text-gray-700">Prioritas Tinggi</strong> dan <strong className="ml-1 text-gray-700">Target Tanggal Terdekat</strong>.
               </p>
             </div>
             
@@ -959,7 +919,6 @@ export default function App() {
             )}
           </div>
 
-          {/* FILTER BAR DIATAS TABEL */}
           <div className="bg-slate-50 border-y border-gray-200 px-6 py-3 flex flex-wrap items-center gap-3">
             <div className="flex items-center bg-white border border-gray-300 rounded-lg px-3 py-2 shadow-sm flex-1 min-w-[200px] max-w-sm">
               <Search size={16} className="text-gray-400 mr-2"/>
@@ -1522,7 +1481,7 @@ export default function App() {
               <div className="grid grid-cols-1 gap-5">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Nama Lengkap PSE <span className="text-red-500">*</span></label>
-                  <select value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 font-medium">
+                  <select value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 font-medium cursor-pointer">
                     <option value="" disabled>-- Pilih Karyawan --</option>
                     {PSE_NAMES.map(name => <option key={name} value={name}>{name}</option>)}
                   </select>
@@ -1551,6 +1510,7 @@ export default function App() {
                       {category.items.map(item => {
                         const itemData = formData.metrics[catId]?.[item.id] || {};
                         const myScoreKey = activeRoleConfig.scoreKey;
+                        const isAutoScore = category.type === 'auto';
 
                         return (
                           <div key={item.id} className="p-5 bg-gray-50 rounded-xl border border-gray-200 flex flex-col gap-4 transition hover:border-gray-300">
@@ -1566,24 +1526,24 @@ export default function App() {
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mt-2">
-                              {category.type === 'auto' ? (
+                              {isAutoScore ? (
                                 <>
                                   <div className="md:col-span-12 lg:col-span-6">
                                     <label className="block text-xs font-bold text-gray-700 mb-1.5 flex justify-between items-center">
-                                      <span>Aktual Realisasi {activeRoleConfig.isQuantRequired ? <span className="text-red-500 ml-1">*Wajib</span> : <span className="text-gray-400 font-normal ml-1">Opsional</span>}</span>
+                                      <span>Aktual Realisasi <span className="text-emerald-500 ml-1">(Otomatis Terisi)</span></span>
                                       {itemData.realisasi > 0 && (
                                         <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 shadow-sm animate-in zoom-in">
                                           + {(((Math.min((Number(itemData.realisasi) / item.target) * 10, 10)) / category.items.length) * category.weight).toFixed(2)} pts
                                         </span>
                                       )}
                                     </label>
-                                    <input type="number" step="0.01" min="0" disabled={isLocked} value={itemData.realisasi || ''} onChange={(e) => {
-                                       const newData = {...formData};
-                                       if(!newData.metrics[catId]) newData.metrics[catId] = {};
-                                       if(!newData.metrics[catId][item.id]) newData.metrics[catId][item.id] = {};
-                                       newData.metrics[catId][item.id].realisasi = e.target.value;
-                                       setFormData(newData);
-                                    }} className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+                                    <input 
+                                      type="number" 
+                                      disabled 
+                                      value={itemData.realisasi || '0'} 
+                                      className="w-full bg-gray-200 border border-gray-300 text-gray-500 rounded-lg px-3 py-2.5 text-sm font-bold cursor-not-allowed" 
+                                    />
+                                    <p className="text-[10px] text-gray-400 mt-1.5 italic">*Diambil otomatis dari sistem Project Monitoring</p>
                                   </div>
                                 </>
                               ) : (
@@ -1658,7 +1618,6 @@ export default function App() {
 
   // --- RENDERING TAMPILAN UTAMA ---
   
-  // 1. Loading State (Menunggu Firebase memverifikasi session)
   if (isLoadingAuth) {
     return (
       <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
@@ -1668,7 +1627,6 @@ export default function App() {
     );
   }
 
-  // 2. Layar Khusus Login (Jika user tidak terdeteksi)
   if (!activeUser) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center p-4">
@@ -1709,12 +1667,17 @@ export default function App() {
     );
   }
 
-  // 3. Layar Utama (Jika user sudah Login)
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-gray-900 pb-12 relative">
+    <div className={`min-h-screen bg-slate-50 font-sans text-gray-900 pb-12 relative ${selectedPseDetailId ? 'print:bg-white print:p-0' : ''}`}>
+      <style>{`
+        @media print {
+          body { background-color: white !important; }
+        }
+      `}</style>
+      
       {renderDialog()}
       
-      <nav className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-50 shadow-sm">
+      <nav className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-50 shadow-sm print:hidden">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-700 to-indigo-900 rounded-xl flex items-center justify-center shadow-md">
@@ -1749,7 +1712,6 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-4 md:border-l md:border-gray-300 md:pl-6">
-              {/* Blok Profil User yang sudah login */}
               <div className="flex items-center gap-3 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
                 <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs uppercase overflow-hidden shadow-sm">
                   {activeUser.photoURL ? <img src={activeUser.photoURL} alt="Avatar" /> : String(activeUser.displayName || activeUser.email || 'U').charAt(0)}
@@ -1777,10 +1739,12 @@ export default function App() {
         </div>
       </nav>
 
-      <main className="max-w-7xl mx-auto px-4 py-8">
-        {activeTab === 'dashboard' ? renderDashboard() : 
-         activeTab === 'projects' ? renderProjectTracking() : 
-         activeTab === 'admin' ? renderAdminPanel() : renderForm()}
+      <main className="max-w-7xl mx-auto px-4 py-8 print:p-0 print:m-0">
+        <div className={selectedPseDetailId ? 'print:hidden' : ''}>
+          {activeTab === 'dashboard' ? renderDashboard() : 
+           activeTab === 'projects' ? renderProjectTracking() : 
+           activeTab === 'admin' ? renderAdminPanel() : renderForm()}
+        </div>
       </main>
     </div>
   );
