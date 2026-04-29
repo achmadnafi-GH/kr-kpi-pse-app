@@ -20,7 +20,7 @@ import {
   Users, BarChart3, FileEdit, Save, AlertCircle, TrendingUp, Award, 
   Activity, PieChart, ShieldCheck, UserCircle, Crown, X, 
   FileText, Search, LogOut, Briefcase, Plus, ListTodo, RefreshCw, Trash2, 
-  Download, Upload, Lock, Settings, UserCog, ShieldAlert
+  Download, Upload, Lock, Settings, UserCog, ShieldAlert, Send
 } from 'lucide-react';
 
 // --- INIT FIREBASE (Siap untuk Netlify & Canvas) ---
@@ -49,7 +49,7 @@ try {
   console.warn('Firebase tidak terkonfigurasi. Berjalan dalam mode offline.', error);
 }
 
-// Fungsi bantu database (Mengikuti aturan canvas/Netlify)
+// Fungsi bantu database
 const getCollectionRef = (colName) => {
   if (typeof __app_id !== 'undefined') return collection(db, 'artifacts', __app_id, 'public', 'data', colName);
   return collection(db, colName); 
@@ -65,14 +65,27 @@ const PSE_NAMES = [
   'Fakhri', 'Ghazy', 'Pankaj', 'Syamil', 'Hakim', 'Tyan', 'Reisya'
 ];
 
-// Mapping default hak akses sesuai instruksi (Bisa dioverride di Admin Panel)
+const SALES_NAMES = [
+  'Ayu Arviani',
+  'Bondan Adi',
+  'Inaya Wulandari',
+  'Inneke Twita',
+  'Johnsy Hein Pitoi',
+  'Lestari Rumata Nancy',
+  'Lie Sunardi Fenery',
+  'Paulus Gideon',
+  'Rifan Septian',
+  'Ryan Dharmatirta',
+  'Sri Evi Wulandari'
+];
+
 const DEFAULT_ROLES = {
   'nafi@kayreach.com': 'admin',
-  'bayu.setiawan@kayreach.com': 'manager',
-  'ayu.arviani@kayreach.com': 'manager',
-  'paulus@kayreach.com': 'manager',
-  'bondan.adi@kayreach.com': 'manager',
-  'rdharmatirta@kayreach.com': 'manager',
+  'bayu.setiawan@kayreach.com': 'manager_pse',
+  'ayu.arviani@kayreach.com': 'manager_other',
+  'paulus@kayreach.com': 'manager_other',
+  'bondan.adi@kayreach.com': 'manager_other',
+  'rdharmatirta@kayreach.com': 'manager_other',
   'mhidayat@kayreach.com': 'staff',
   'arfindo.laksono@kayreach.com': 'staff',
   'ghazyi.dzulfaqar@kayreach.com': 'staff',
@@ -85,7 +98,6 @@ const DEFAULT_ROLES = {
   'syamil.umairha@kayreach.com': 'staff'
 };
 
-// Pemetaan otomatis Email Staff ke Nama PSE di database
 const EMAIL_TO_PSE_MAP = {
   'mhidayat@kayreach.com': 'Dayat',
   'arfindo.laksono@kayreach.com': 'Arfindo',
@@ -147,51 +159,86 @@ const METRICS_CONFIG = {
 };
 
 const ROLE_CONFIG = {
-  admin: { id: 'admin', label: 'Owner / Admin', icon: Crown, color: 'text-purple-600 bg-purple-50 border-purple-200', scoreKey: 'skorTop', noteKey: 'catatanTop' },
-  manager: { id: 'manager', label: 'Manager', icon: ShieldCheck, color: 'text-blue-600 bg-blue-50 border-blue-200', scoreKey: 'skorManager', noteKey: 'catatanManager' },
-  staff: { id: 'staff', label: 'Staff / PSE', icon: UserCircle, color: 'text-emerald-600 bg-emerald-50 border-emerald-200', scoreKey: 'skorPeer', noteKey: 'catatanPeer' }
+  admin: { id: 'admin', label: 'Owner / Admin', icon: Crown, color: 'text-purple-600 bg-purple-50 border-purple-200', scoreKey: 'skorTop', canRateQuant: true, isQuantRequired: false, isOtherRequired: false },
+  manager_pse: { id: 'manager_pse', label: 'Manager PSE', icon: ShieldCheck, color: 'text-blue-600 bg-blue-50 border-blue-200', scoreKey: 'skorManager', canRateQuant: true, isQuantRequired: true, isOtherRequired: true },
+  manager_other: { id: 'manager_other', label: 'Manager Div. Lain', icon: FileText, color: 'text-orange-600 bg-orange-50 border-orange-200', scoreKey: 'skorPeerManager', canRateQuant: false, isQuantRequired: false, isOtherRequired: false },
+  staff: { id: 'staff', label: 'Staff / PSE', icon: UserCircle, color: 'text-emerald-600 bg-emerald-50 border-emerald-200', scoreKey: 'skorPeer', canRateQuant: false, isQuantRequired: false, isOtherRequired: false }
 };
 
-// --- FUNGSI PARSER CSV NATIVE ---
-function parseCSV(str) {
-  const arr = [];
-  let quote = false;
-  let col = 0, row = 0;
-  for (let c = 0; c < str.length; c++) {
-      let cc = str[c], nc = str[c+1];
-      arr[row] = arr[row] || [];
-      arr[row][col] = arr[row][col] || '';
-      if (cc === '"' && quote && nc === '"') { arr[row][col] += cc; ++c; continue; }
-      if (cc === '"') { quote = !quote; continue; }
-      if (cc === ',' && !quote) { ++col; continue; }
-      if (cc === '\r' && nc === '\n' && !quote) { ++row; col = 0; ++c; continue; }
-      if (cc === '\n' && !quote) { ++row; col = 0; continue; }
-      if (cc === '\r' && !quote) { ++row; col = 0; continue; }
-      arr[row][col] += cc;
+const INITIAL_PROJECTS = [
+  { 
+    id: 'sim1', client: 'Kejaksaan Agung', priority: 'Low', pm: 'Syamil', backup: 'Yanuar', sales: 'Paulus Gideon', phase: 'Penawaran & Proposal', status: 'Not started', 
+    startDate: '2026-03-05', endDate: '2026-04-24', 
+    noteHistory: [{ text: 'Pembuatan dokumen BoQ dan proposal, perlu akun trial req ke zoom', timestamp: '2026-03-05T09:00:00Z', author: 'System' }], 
+    linkDoc: '', lastUpdatedBy: 'Simulator' 
+  },
+  { 
+    id: 'sim2', client: 'Adhi Cakra', priority: 'Low', pm: 'Damardjati', backup: 'Fakhri', sales: 'Rifan Septian', phase: 'PoC & Testing', status: 'Pending', 
+    startDate: '2026-03-10', endDate: '2026-03-10', 
+    noteHistory: [{ text: 'Penawaran sudah dikirim ke user & Create report PoC', timestamp: '2026-03-10T10:30:00Z', author: 'System' }], 
+    linkDoc: '', lastUpdatedBy: 'Simulator' 
+  },
+  { 
+    id: 'sim3', client: 'Traveloka', priority: 'Low', pm: 'Syamil', backup: 'Hakim', sales: 'Paulus Gideon', phase: 'Instalasi', status: 'Completed', 
+    startDate: '2025-12-15', endDate: '2026-03-11', 
+    noteHistory: [{ text: 'Pending di BAST, menunggu jadwal BAST', timestamp: '2026-03-11T14:15:00Z', author: 'System' }], 
+    linkDoc: 'https://drive.google.com/drive/u/0/folders/14oZSyWTF6unaM44x_ndCkVNiWF-JjMHe', lastUpdatedBy: 'Simulator' 
+  },
+  { 
+    id: 'sim4', client: 'CPI', priority: 'Low', pm: 'Damardjati', backup: 'Pankaj', sales: 'Johnsy Hein Pitoi', phase: 'PoC & Testing', status: 'Completed', 
+    startDate: '2026-02-25', endDate: '2026-03-16', 
+    noteHistory: [{ text: 'Barang sudah di dismantle, Create report PoC & BoQ', timestamp: '2026-03-16T11:00:00Z', author: 'System' }], 
+    linkDoc: '', lastUpdatedBy: 'Simulator' 
+  },
+  { 
+    id: 'sim5', client: 'Pernod Richard', priority: 'Low', pm: 'Dayat', backup: 'Pankaj', sales: 'Johnsy Hein Pitoi', phase: 'Instalasi', status: 'In progress', 
+    startDate: '2026-04-15', endDate: '2026-04-24', 
+    noteHistory: [{ text: 'Perangkat sudah di delivery, sedang menunggu apakah perlu ada installasi atau tidak', timestamp: '2026-04-15T08:20:00Z', author: 'System' }], 
+    linkDoc: '', lastUpdatedBy: 'Simulator' 
   }
-  return arr;
-}
+];
+
+const INITIAL_EVALUATIONS = [
+  { id: 'e1', name: 'Syamil', scores: { kuantitatif: 8, kualitatif: 7.5, pengembangan: 8, kultur: 9 }, finalScore: 8.1, status: 'Exceeds Exp.' },
+  { id: 'e2', name: 'Damardjati', scores: { kuantitatif: 7, kualitatif: 7, pengembangan: 7, kultur: 8 }, finalScore: 7.2, status: 'Meets Exp.' },
+  { id: 'e3', name: 'Dayat', scores: { kuantitatif: 9, kualitatif: 8.5, pengembangan: 8, kultur: 9 }, finalScore: 8.7, status: 'Exceeds Exp.' },
+];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState('projects'); // projects, dashboard, form, admin
-  const [evaluations, setEvaluations] = useState([]);
-  const [projects, setProjects] = useState([]);
+  const [activeTab, setActiveTab] = useState('dashboard'); 
+  const [evaluations, setEvaluations] = useState(INITIAL_EVALUATIONS);
+  const [projects, setProjects] = useState(INITIAL_PROJECTS);
   const [selectedPseDetailId, setSelectedPseDetailId] = useState(null); 
   
+  // Custom Alert / Confirm Dialog State
+  const [dialog, setDialog] = useState(null);
+
+  // Helper untuk memunculkan Modal
+  const showMessage = (msg) => setDialog({ type: 'alert', message: msg });
+  const showConfirm = (msg, onConfirmFn) => setDialog({ type: 'confirm', message: msg, onConfirm: onConfirmFn });
+
   // State Auth & Hak Akses
-  const [user, setUser] = useState(null);
+  const [realUser, setRealUser] = useState(null);
+  const [mockUser, setMockUser] = useState(null);
+  const activeUser = mockUser || realUser;
+
   const [managedRoles, setManagedRoles] = useState([]); 
   const [userRole, setUserRole] = useState('guest'); 
   const [staffIdentity, setStaffIdentity] = useState(''); 
   const [activeRoleConfig, setActiveRoleConfig] = useState(ROLE_CONFIG.staff); 
+  const [userProfiles, setUserProfiles] = useState({}); 
 
   // State Form Penilaian
   const [isRevisionMode, setIsRevisionMode] = useState(false);
-  const [formData, setFormData] = useState({ name: '', spec: 'UC', metrics: {} });
+  const [formData, setFormData] = useState({ name: '', metrics: {} });
 
   // State Form Project
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
-  const [projectForm, setProjectForm] = useState({ id: '', client: '', priority: 'Medium', pm: '', backup: '', status: 'Not started', phase: 'Identifikasi', solution: 'UC' });
+  const [projectForm, setProjectForm] = useState({ id: '', client: '', priority: 'Medium', pm: '', backup: '', sales: '', status: 'Not started', phase: 'Identifikasi', startDate: '', endDate: '', linkDoc: '', noteHistory: [] });
+  // Temp state untuk menyimpan draf catatan baru di tabel
+  const [newNotesMap, setNewNotesMap] = useState({}); 
+  // State untuk multiple selection (Bulk Delete)
+  const [selectedProjects, setSelectedProjects] = useState([]);
 
   // State Filter & Search Project Tracking
   const [searchQuery, setSearchQuery] = useState('');
@@ -214,25 +261,43 @@ export default function App() {
     initAuth();
 
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
+      setRealUser(currentUser);
     });
     return () => unsubscribe();
   }, []);
 
-  // Sinkronisasi Real-Time Database
+  // Sinkronisasi Real-Time Database 
   useEffect(() => {
-    if (!user || !db) return;
+    if (!activeUser || !db) return;
+
+    if (!activeUser.isAnonymous && activeUser.email) {
+      const profileData = {
+        email: activeUser.email,
+        displayName: activeUser.displayName || ''
+      };
+      if (activeUser.photoURL) profileData.photoURL = activeUser.photoURL; 
+      setDoc(getDocRef('users_profile', activeUser.email), profileData, { merge: true }).catch(console.error);
+    }
+
     try {
       const evalColRef = getCollectionRef('kpi_evaluations');
       const unsubEvals = onSnapshot(evalColRef, (snapshot) => {
-        const dbData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
-        setEvaluations(dbData);
+        if (!snapshot.empty) {
+          const dbData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+          setEvaluations(dbData);
+        } else {
+          setEvaluations(INITIAL_EVALUATIONS);
+        }
       }, (error) => console.error("Gagal sinkronisasi Eval DB:", error));
 
       const projColRef = getCollectionRef('project_tracking');
       const unsubProjects = onSnapshot(projColRef, (snapshot) => {
-        const dbData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
-        setProjects(dbData);
+        if (!snapshot.empty) {
+          const dbData = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
+          setProjects(dbData);
+        } else {
+          setProjects(INITIAL_PROJECTS);
+        }
       }, (error) => console.error("Gagal sinkronisasi Project DB:", error));
 
       const roleColRef = getCollectionRef('user_roles');
@@ -241,16 +306,25 @@ export default function App() {
         setManagedRoles(dbData);
       }, (error) => console.error("Gagal sinkronisasi Roles DB:", error));
 
-      return () => { unsubEvals(); unsubProjects(); unsubRoles(); };
+      const profileColRef = getCollectionRef('users_profile');
+      const unsubProfiles = onSnapshot(profileColRef, (snapshot) => {
+        const profilesData = {};
+        snapshot.docs.forEach(doc => {
+          profilesData[doc.id] = doc.data();
+        });
+        setUserProfiles(profilesData);
+      }, (error) => console.error("Gagal sinkronisasi Profiles DB:", error));
+
+      return () => { unsubEvals(); unsubProjects(); unsubRoles(); unsubProfiles(); };
     } catch (err) {
       console.error(err);
     }
-  }, [user]);
+  }, [activeUser]);
 
   // LOGIKA PENENTUAN HAK AKSES OTOMATIS (RBAC)
   useEffect(() => {
-    if (user && !user.isAnonymous) {
-      const email = user.email?.toLowerCase() || '';
+    if (activeUser && !activeUser.isAnonymous) {
+      const email = activeUser.email?.toLowerCase() || '';
       let currentRole = 'staff';
 
       const customDbRole = managedRoles.find(r => r.id === email);
@@ -272,7 +346,7 @@ export default function App() {
         if (EMAIL_TO_PSE_MAP[email]) {
           setStaffIdentity(EMAIL_TO_PSE_MAP[email]);
         } else {
-          const match = PSE_NAMES.find(n => user.displayName?.toLowerCase().includes(n.toLowerCase()));
+          const match = PSE_NAMES.find(n => (activeUser.displayName || '').toLowerCase().includes(n.toLowerCase()));
           if (match) setStaffIdentity(match);
         }
       }
@@ -280,8 +354,13 @@ export default function App() {
     } else {
       setUserRole('guest');
     }
-  }, [user, managedRoles]);
+  }, [activeUser, managedRoles]);
 
+  // Evaluasi Hak Akses Penghapusan Project & Modifikasi Master Project
+  const canDeleteProject = ['admin', 'manager_pse'].includes(userRole);
+  const canManageProjectFull = ['admin', 'manager_pse'].includes(userRole);
+
+  // Filter Project
   const visibleProjects = projects.filter(proj => {
     if (userRole === 'staff') {
       return proj.pm === staffIdentity || proj.backup === staffIdentity;
@@ -298,7 +377,7 @@ export default function App() {
 
   const handleGoogleLogin = async () => {
     if (!auth) {
-      alert("Konfigurasi Firebase belum ada. Gunakan .env di Netlify.");
+      showMessage("Konfigurasi Firebase belum ada. Gunakan .env di Netlify.");
       return;
     }
     try {
@@ -306,8 +385,18 @@ export default function App() {
       await signInWithPopup(auth, provider);
     } catch (error) {
       console.error("Google Sign-In Error:", error);
-      alert("Terjadi kesalahan saat login Google.");
+      if (error.code === 'auth/unauthorized-domain') {
+         showMessage("Google Sign-In terblokir di lingkungan preview ini. Anda otomatis masuk menggunakan Mode Simulator sebagai Admin.");
+         setMockUser({ uid: 'sim-admin-123', email: 'nafi@kayreach.com', displayName: 'Nafi (Simulator)', photoURL: '', isAnonymous: false });
+      } else {
+         showMessage("Terjadi kesalahan saat login Google: " + error.message);
+      }
     }
+  };
+
+  const handleLogout = () => {
+    setMockUser(null);
+    if (auth) auth.signOut();
   };
 
   useEffect(() => {
@@ -315,7 +404,7 @@ export default function App() {
     if (formData.name) {
       const existing = evaluations.find(e => e.name === formData.name);
       if (existing && existing.rawMetrics) {
-        setFormData(prev => ({ ...prev, spec: existing.spec, metrics: JSON.parse(JSON.stringify(existing.rawMetrics)) }));
+        setFormData(prev => ({ ...prev, metrics: JSON.parse(JSON.stringify(existing.rawMetrics)) }));
       } else {
         setFormData(prev => ({ ...prev, metrics: {} }));
       }
@@ -332,44 +421,107 @@ export default function App() {
     return SCORING_RULES[4];
   };
 
-  const handleSaveProject = async () => {
-    if (!user || userRole === 'guest') {
-      alert('Harap Sign-In terlebih dahulu!'); return;
-    }
-    if (!projectForm.client || !projectForm.pm) {
-      alert('Nama Client dan PM Wajib diisi!'); return;
+  const handleAddNoteToProject = async (projectId) => {
+    const draftText = newNotesMap[projectId];
+    if (!draftText || !draftText.trim()) return;
+    if (!activeUser || userRole === 'guest') {
+      showMessage('Harap Sign-In terlebih dahulu untuk menambahkan catatan!'); return;
     }
 
-    const newProject = {
-      ...projectForm,
-      id: projectForm.id || Date.now().toString(),
-      lastUpdatedBy: user.displayName || user.email
+    const projectTarget = projects.find(p => p.id === projectId);
+    const newNoteObj = {
+      text: draftText.trim(),
+      timestamp: new Date().toISOString(),
+      author: activeUser?.displayName || activeUser?.email || 'User'
     };
+
+    const updatedHistory = [...(projectTarget.noteHistory || []), newNoteObj];
+    await handleInlineProjectUpdate(projectId, 'noteHistory', updatedHistory);
+
+    // Clear draf setelah sukses
+    setNewNotesMap(prev => ({...prev, [projectId]: ''}));
+  };
+
+  const handleSaveProject = async () => {
+    if (!activeUser || userRole === 'guest') {
+      showMessage('Harap Sign-In terlebih dahulu!'); return;
+    }
+    if (!projectForm.client || !projectForm.pm) {
+      showMessage('Nama Client dan PM Wajib diisi!'); return;
+    }
+
+    const newProject = { ...projectForm, lastUpdatedBy: activeUser?.displayName || activeUser?.email || 'System' };
+    if (!newProject.id) newProject.id = Date.now().toString();
+
+    // Jika ada catatan draf di modal, langsung konversi ke history pertama
+    if (newProject.newDraftNote && newProject.newDraftNote.trim()) {
+      newProject.noteHistory = [...(newProject.noteHistory || []), {
+         text: newProject.newDraftNote.trim(),
+         timestamp: new Date().toISOString(),
+         author: activeUser?.displayName || activeUser?.email || 'User'
+      }];
+    }
+    delete newProject.newDraftNote; // hapus state sementara
 
     if (db) {
       try {
         await setDoc(getDocRef('project_tracking', newProject.id), newProject);
+        setIsProjectModalOpen(false);
+        setProjectForm({ id: '', client: '', priority: 'Medium', pm: '', backup: '', sales: '', status: 'Not started', phase: 'Identifikasi', startDate: '', endDate: '', linkDoc: '', noteHistory: [] });
       } catch (error) {
-        alert("Gagal menyimpan Project.");
+        showMessage("Gagal menyimpan Project.");
       }
     }
-    setIsProjectModalOpen(false);
-    setProjectForm({ id: '', client: '', priority: 'Medium', pm: '', backup: '', status: 'Not started', phase: 'Identifikasi', solution: 'UC' });
   };
 
-  const handleDeleteProject = async (id) => {
-    if(!confirm('Anda yakin ingin menghapus project ini?')) return;
-    if (db && userRole !== 'guest') {
-      await deleteDoc(getDocRef('project_tracking', id));
+  const handleDeleteProject = (id) => {
+    showConfirm('Anda yakin ingin menghapus project ini secara permanen?', async () => {
+      if (db && canDeleteProject) {
+        await deleteDoc(getDocRef('project_tracking', id));
+        // Hilangkan dari seleksi jika kebetulan terseleksi
+        setSelectedProjects(prev => prev.filter(pid => pid !== id));
+      }
+    });
+  };
+
+  const handleBulkDeleteProjects = () => {
+    if (selectedProjects.length === 0) return;
+    showConfirm(`Anda yakin ingin menghapus ${selectedProjects.length} project terpilih secara permanen? Data yang dihapus tidak dapat dikembalikan.`, async () => {
+      if (db && canDeleteProject) {
+        try {
+          const deletePromises = selectedProjects.map(id => deleteDoc(getDocRef('project_tracking', id)));
+          await Promise.all(deletePromises);
+          setSelectedProjects([]); // Bersihkan seleksi setelah berhasil
+        } catch (error) {
+          console.error("Gagal melakukan Bulk Delete:", error);
+          showMessage("Terjadi kesalahan saat menghapus beberapa project.");
+        }
+      }
+    });
+  };
+
+  const handleSelectAllProjects = (e, currentDisplayData) => {
+    if (e.target.checked) {
+      setSelectedProjects(currentDisplayData.map(p => p.id));
+    } else {
+      setSelectedProjects([]);
+    }
+  };
+
+  const handleSelectProject = (id) => {
+    if (selectedProjects.includes(id)) {
+      setSelectedProjects(selectedProjects.filter(pid => pid !== id));
+    } else {
+      setSelectedProjects([...selectedProjects, id]);
     }
   };
 
   const handleInlineProjectUpdate = async (id, field, value) => {
-    if (!user || userRole === 'guest') {
-      alert('Silakan Sign-In terlebih dahulu!'); return;
+    if (!activeUser || userRole === 'guest') {
+      showMessage('Silakan Sign-In terlebih dahulu!'); return;
     }
     const updatedProjects = projects.map(p => {
-      if (p.id === id) return { ...p, [field]: value, lastUpdatedBy: user?.displayName || user?.email };
+      if (p.id === id) return { ...p, [field]: value, lastUpdatedBy: activeUser?.displayName || activeUser?.email || 'System' };
       return p;
     });
     setProjects(updatedProjects); 
@@ -377,7 +529,8 @@ export default function App() {
     if (db) {
       try {
         const targetProj = updatedProjects.find(p => p.id === id);
-        await setDoc(getDocRef('project_tracking', id), targetProj); 
+        // Pastikan membawa value terbaru
+        await setDoc(getDocRef('project_tracking', id), { ...targetProj, [field]: value, lastUpdatedBy: activeUser?.displayName || activeUser?.email || 'System' }); 
       } catch (error) {
         console.error("Gagal update inline:", error);
       }
@@ -386,16 +539,16 @@ export default function App() {
 
   const handleSaveUserRole = async (e) => {
     e.preventDefault();
-    if (!user || userRole !== 'admin') return;
+    if (!activeUser || userRole !== 'admin') return;
 
     const formEmail = e.target.email.value.toLowerCase().trim();
     const roleValue = e.target.role.value;
 
     if (!formEmail || !formEmail.includes('@')) {
-      alert("Format email tidak valid!"); return;
+      showMessage("Format email tidak valid!"); return;
     }
     if (formEmail === 'nafi@kayreach.com') {
-      alert("Email Owner/Admin utama tidak bisa diubah perannya."); return;
+      showMessage("Email Owner/Admin utama tidak bisa diubah perannya."); return;
     }
 
     if (db) {
@@ -404,35 +557,58 @@ export default function App() {
           id: formEmail,
           email: formEmail,
           role: roleValue,
-          lastUpdatedBy: user.email,
+          lastUpdatedBy: activeUser?.email || 'System',
           updatedAt: new Date().toISOString()
         });
-        alert(`Hak akses untuk ${formEmail} berhasil disetel menjadi ${roleValue.toUpperCase()}`);
+        showMessage(`Hak akses untuk ${formEmail} berhasil disetel menjadi ${roleValue.toUpperCase()}`);
         e.target.reset();
       } catch (error) {
-        console.error("Gagal menyimpan role", error);
-        alert("Gagal menyimpan role ke database.");
+        showMessage("Gagal menyimpan role ke database.");
       }
     }
   };
 
-  const handleDeleteUserRole = async (emailToDelete) => {
-    if (!confirm(`Hapus kustomisasi role untuk ${emailToDelete}? Status mereka akan kembali ke status Default awal.`)) return;
-    if (db && userRole === 'admin') {
-      try {
-        await deleteDoc(getDocRef('user_roles', emailToDelete));
-      } catch (error) {
-        console.error("Gagal menghapus role", error);
+  const handleDeleteUserRole = (emailToDelete) => {
+    showConfirm(`Hapus kustomisasi role untuk ${emailToDelete}? Hak akses mereka akan kembali menjadi Default (Staff).`, async () => {
+      if (db && userRole === 'admin') {
+        try {
+          await deleteDoc(getDocRef('user_roles', emailToDelete));
+        } catch (error) {
+          console.error("Gagal menghapus role", error);
+        }
       }
-    }
+    });
   };
 
-  // NATIVE EXCEL/CSV EXPORT & SMART IMPORT LOGIC
+  const handleSimpanFormClick = () => {
+    let isMissingMandatoryQuant = false;
+    let isMissingMandatoryOther = false;
+
+    if (activeRoleConfig.isQuantRequired) {
+      METRICS_CONFIG.kuantitatif.items.forEach(item => {
+        if (!formData.metrics.kuantitatif?.[item.id]?.realisasi) isMissingMandatoryQuant = true;
+      });
+    }
+
+    if (activeRoleConfig.isOtherRequired) {
+      ['kualitatif', 'pengembangan', 'kultur'].forEach(catId => {
+        METRICS_CONFIG[catId].items.forEach(item => {
+          if (!formData.metrics[catId]?.[item.id]?.[activeRoleConfig.scoreKey]) isMissingMandatoryOther = true;
+        });
+      });
+    }
+
+    if (isMissingMandatoryQuant || isMissingMandatoryOther) {
+      showMessage("Terdapat field WAJIB yang belum diisi. Mohon lengkapi semua metrik penilaian sesuai dengan hak akses Anda sebelum menyimpan.");
+      return;
+    }
+    showMessage("Data divalidasi dengan sukses! (Fitur push to database sedang diproses dalam versi selanjutnya)");
+  };
+
   const downloadCSV = (headers, rows, filename) => {
     const csvContent = [headers, ...rows]
       .map(row => row.map(val => `"${String(val || '').replace(/"/g, '""')}"`).join(','))
       .join('\n');
-    
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -440,114 +616,184 @@ export default function App() {
     link.click();
   };
 
-  const handleExportProjects = () => {
-    const headers = ['ID Sistem', 'Nama Klien / Project', 'Solusi Utama', 'Prioritas', 'PM (Primary PSE)', 'Backup PSE', 'Fase / Milestone', 'Status', 'Terakhir Diupdate'];
-    const rows = projects.map(p => [
-      p.id, p.client, p.solution, p.priority, p.pm, p.backup, p.phase, p.status, p.lastUpdatedBy || '-'
+  const handleExportKPI = () => {
+    const headers = ['Nama PSE', 'Skor Kuantitatif', 'Skor Kualitatif', 'Skor Pengembangan', 'Skor Kultur', 'Skor Akhir', 'Status'];
+    const rows = evaluations.map(emp => [
+      emp.name || '-', Number(emp.scores?.kuantitatif || 0).toFixed(2), Number(emp.scores?.kualitatif || 0).toFixed(2),
+      Number(emp.scores?.pengembangan || 0).toFixed(2), Number(emp.scores?.kultur || 0).toFixed(2), Number(emp.finalScore || 0).toFixed(2), emp.status || '-'
     ]);
+    downloadCSV(headers, rows, "Rekap_KPI_Export.csv");
+  };
+
+  const handleExportProjects = () => {
+    const headers = ['ID Sistem', 'Nama Klien / Project', 'Prioritas', 'PM (Primary PSE)', 'Backup PSE', 'Sales', 'Start Date', 'Estimation End Date', 'Fase / Milestone', 'Status', 'Riwayat Catatan (Gabungan)', 'Link Dokumentasi', 'Terakhir Diupdate'];
+    const rows = projects.map(p => {
+      const notesMerged = p.noteHistory?.map(n => `[${new Date(n.timestamp).toLocaleDateString()}] ${n.author}: ${n.text}`).join(' | ') || '-';
+      return [
+        p.id, p.client, p.priority, p.pm, p.backup, p.sales || '-', p.startDate || '-', p.endDate || '-', p.phase, p.status, notesMerged, p.linkDoc || '-', p.lastUpdatedBy || '-'
+      ]
+    });
     downloadCSV(headers, rows, "Project_Monitoring_Export.csv");
   };
 
-  const handleImportProjects = (e) => {
+  const handleImportProjects = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    if (!user || user.isAnonymous) {
-      alert('Anda harus Sign-In dengan Akun Google terlebih dahulu!');
+    if (!activeUser || userRole === 'guest') {
+      showMessage('Anda harus Sign-In dan memiliki hak akses untuk mengimpor data!');
       e.target.value = null; return;
     }
 
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const text = evt.target.result;
-        const rows = parseCSV(text);
-        if (rows.length < 2) { alert("File kosong atau format tidak sesuai."); return; }
-
-        // Bersihkan header (hilangkan BOM mark excel dan spasi berlebih)
-        const headers = rows[0].map(h => h ? h.replace(/^\uFEFF/, '').trim() : '');
-        const data = rows.slice(1).map(row => {
-          const obj = {};
-          headers.forEach((h, i) => { obj[h] = row[i]; });
-          return obj;
+    try {
+      if (!window.XLSX) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+          script.onload = resolve;
+          script.onerror = () => reject(new Error('Gagal memuat library Excel'));
+          document.body.appendChild(script);
         });
+      }
 
-        // Smart Mapping Nama Panjang (Muhammad Nur Hidayat -> Dayat)
-        const mapPseName = (val) => {
-          if (!val) return '';
-          const v = val.toLowerCase();
-          if (v.includes('hidayat') || v.includes('dayat')) return 'Dayat';
-          if (v.includes('yanuar')) return 'Yanuar';
-          if (v.includes('arfindo')) return 'Arfindo';
-          if (v.includes('damardjati')) return 'Damardjati';
-          if (v.includes('kuncoro')) return 'Eko Kuncoro';
-          if (v.includes('fakhri')) return 'Fakhri';
-          if (v.includes('ghazy')) return 'Ghazy';
-          if (v.includes('pankaj')) return 'Pankaj';
-          if (v.includes('syamil')) return 'Syamil';
-          if (v.includes('hakim')) return 'Hakim';
-          if (v.includes('tyan')) return 'Tyan';
-          if (v.includes('reisya')) return 'Reisya';
-          return val.split(' ')[0]; // Fallback jika tidak dikenali
-        };
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
+        try {
+          const data = new Uint8Array(evt.target.result);
+          const workbook = window.XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonRows = window.XLSX.utils.sheet_to_json(worksheet, { raw: false, defval: "" });
 
-        let importedCount = 0;
-        const newProjectsList = [...projects];
-        const firestorePromises = [];
+          if (jsonRows.length === 0) { showMessage("File kosong atau format salah."); return; }
 
-        for (const row of data) {
-          // Dukung header format baru & format lama
-          const client = row['Nama Klien / Project'] || row['User'] || row['Client'];
-          
-          // Lewati jika baris kosong / baris tanpa nama client
-          if (!client || !client.trim() || client.includes(',,,,')) continue;
-
-          const newProj = {
-            id: row['ID Sistem'] || `proj_${Date.now()}_${importedCount}`,
-            client: client.trim(),
-            solution: row['Solusi Utama'] || row['Solution'] || 'UC',
-            priority: row['Prioritas'] || row['Priority'] || 'Medium',
-            pm: mapPseName(row['PM (Primary PSE)'] || row['PM']),
-            backup: mapPseName(row['Backup PSE'] || row['Backup']),
-            phase: row['Fase / Milestone'] || row['Status Project'] || 'Identifikasi',
-            status: row['Status'] || 'Not started',
-            lastUpdatedBy: user.displayName || user.email
+          const mapPseName = (val) => {
+            if (!val || typeof val !== 'string') return '';
+            const v = val.toLowerCase();
+            if (v.includes('hidayat') || v.includes('dayat')) return 'Dayat';
+            if (v.includes('yanuar')) return 'Yanuar';
+            if (v.includes('arfindo') || v.includes('laksono')) return 'Arfindo';
+            if (v.includes('damardjati') || v.includes('supadjar')) return 'Damardjati';
+            if (v.includes('kuncoro')) return 'Eko Kuncoro';
+            if (v.includes('fakhri') || v.includes('febrianto')) return 'Fakhri';
+            if (v.includes('ghazy') || v.includes('dzulfaqar')) return 'Ghazy';
+            if (v.includes('pankaj') || v.includes('asgus')) return 'Pankaj';
+            if (v.includes('syamil') || v.includes('umairha')) return 'Syamil';
+            if (v.includes('hakim')) return 'Hakim';
+            if (v.includes('tyan')) return 'Tyan';
+            if (v.includes('reisya')) return 'Reisya';
+            return val.split(' ')[0]; 
           };
 
-          // Timpa data lama jika ID cocok ATAU Nama Klien cocok
-          const existingIndex = newProjectsList.findIndex(p => p.id === newProj.id || p.client.toLowerCase() === newProj.client.toLowerCase());
-          
-          if (existingIndex >= 0) {
-            newProjectsList[existingIndex] = { ...newProjectsList[existingIndex], ...newProj };
-          } else {
-            newProjectsList.push(newProj);
+          const parseExcelDate = (val) => {
+             if (!val) return '';
+             if (val.match(/^\d{4}-\d{2}-\d{2}$/)) return val;
+             try {
+                const d = new Date(val);
+                if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+             } catch(e) {}
+             return '';
+          };
+
+          let importedCount = 0;
+          const newProjectsList = [...projects];
+          const firestorePromises = [];
+
+          for (const row of jsonRows) {
+            const getVal = (keys) => {
+              const rowKeys = Object.keys(row);
+              for (let k of keys) {
+                const foundKey = rowKeys.find(rk => rk.trim().toLowerCase() === k.toLowerCase());
+                if (foundKey && row[foundKey]) return String(row[foundKey]).trim();
+              }
+              return '';
+            };
+
+            const client = getVal(['Nama Klien / Project', 'User', 'Client', 'Nama Klien']);
+            if (!client || client === '' || client.includes(',,,,')) continue;
+
+            const initialNoteText = getVal(['Catatan Update', 'Catatan', 'Notes', 'Milestone Deskripsi']);
+            const initialNoteHistory = initialNoteText ? [{ text: initialNoteText, timestamp: new Date().toISOString(), author: 'System Import' }] : [];
+
+            const newProj = {
+              id: getVal(['ID Sistem']) || `proj_${Date.now()}_${Math.random().toString(36).substr(2,5)}`,
+              client: client,
+              priority: getVal(['Prioritas', 'Priority']) || 'Medium',
+              pm: mapPseName(getVal(['PM (Primary PSE)', 'PM'])),
+              backup: mapPseName(getVal(['Backup PSE', 'Backup'])),
+              sales: getVal(['Sales', 'Nama Sales', 'Sales Person']) || '',
+              phase: getVal(['Fase / Milestone', 'Status Project', 'Milestone']) || 'Identifikasi',
+              status: getVal(['Status']) || 'Not started',
+              startDate: parseExcelDate(getVal(['Start date', 'Start'])),
+              endDate: parseExcelDate(getVal(['End date', 'End', 'Estimation End'])),
+              linkDoc: getVal(['Link Documentation', 'Link Dokumen', 'Link']) || '',
+              noteHistory: initialNoteHistory,
+              lastUpdatedBy: activeUser?.displayName || activeUser?.email || 'System'
+            };
+
+            const existingIndex = newProjectsList.findIndex(p => p.id === newProj.id || p.client.toLowerCase() === newProj.client.toLowerCase());
+            
+            if (existingIndex >= 0) {
+              const oldNotes = newProjectsList[existingIndex].noteHistory || [];
+              if (initialNoteHistory.length > 0) newProj.noteHistory = [...oldNotes, ...initialNoteHistory];
+              else newProj.noteHistory = oldNotes;
+
+              newProjectsList[existingIndex] = { ...newProjectsList[existingIndex], ...newProj };
+            } else {
+              newProjectsList.push(newProj);
+            }
+
+            if (db) {
+              firestorePromises.push(setDoc(getDocRef('project_tracking', newProj.id), newProj));
+            }
+            importedCount++;
           }
 
-          if (db) {
-            // Kita kumpulkan ke promise agar mempercepat upload ke cloud tanpa membuat aplikasi freeze
-            firestorePromises.push(setDoc(getDocRef('project_tracking', newProj.id), newProj));
-          }
-          importedCount++;
+          if (firestorePromises.length > 0) await Promise.all(firestorePromises);
+          setProjects(newProjectsList);
+          showMessage(`Berhasil! ${importedCount} project sukses diimpor dari file Excel Anda. Data telah dipetakan ke sistem.`);
+        } catch (error) {
+          console.error("Parse Error:", error);
+          showMessage("Terjadi kesalahan saat membaca file. Pastikan format file sesuai.");
         }
-
-        // Tembak sekaligus ke Firestore
-        if (firestorePromises.length > 0) {
-          await Promise.all(firestorePromises);
-        }
-
-        setProjects(newProjectsList);
-        alert(`Berhasil! ${importedCount} project sukses diimpor dan dipetakan secara otomatis ke dalam database.`);
-      } catch (error) {
-        console.error(error);
-        alert("Terjadi kesalahan saat membaca file. Pastikan ekstensi .csv (Comma Separated Values) tanpa format aneh.");
-      }
-      e.target.value = null; 
-    };
-    reader.readAsText(file);
+        e.target.value = null; 
+      };
+      reader.readAsArrayBuffer(file);
+    } catch (err) {
+      console.error("Lib Load Error:", err);
+      showMessage("Gagal memuat library pemroses Excel. Periksa koneksi internet Anda.");
+      e.target.value = null;
+    }
   };
 
 
   // --- RENDERERS ---
+
+  const renderDialog = () => {
+    if (!dialog) return null;
+    return (
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl shadow-2xl max-w-sm w-full p-6 animate-in zoom-in-95 border border-gray-200">
+          <h3 className="text-lg font-bold text-gray-800 mb-3 flex items-center">
+            {dialog.type === 'confirm' ? <AlertCircle className="text-orange-500 mr-2"/> : <AlertCircle className="text-blue-500 mr-2"/>}
+            {dialog.type === 'confirm' ? 'Konfirmasi Aksi' : 'Informasi Sistem'}
+          </h3>
+          <p className="text-sm text-gray-600 mb-6 leading-relaxed">{dialog.message}</p>
+          <div className="flex justify-end gap-3">
+            {dialog.type === 'confirm' && (
+              <button onClick={() => setDialog(null)} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">Batal</button>
+            )}
+            <button onClick={() => {
+              if (dialog.type === 'confirm' && dialog.onConfirm) dialog.onConfirm();
+              setDialog(null);
+            }} className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors">
+              {dialog.type === 'confirm' ? 'Ya, Lanjutkan' : 'Mengerti'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderDetailModal = () => {
     if (!selectedPseDetailId) return null;
@@ -567,7 +813,6 @@ export default function App() {
               </div>
               <div>
                 <h2 className="text-2xl font-black text-gray-800 tracking-tight">{emp.name}</h2>
-                <p className="text-sm font-semibold text-gray-500 bg-gray-200 inline-block px-2 py-0.5 rounded mt-1">{emp.spec}</p>
               </div>
             </div>
             <div className="text-right mr-8">
@@ -630,21 +875,15 @@ export default function App() {
       );
     }
 
-    // Menggabungkan Data Default dan Custom untuk Ditampilkan di Tabel
     const allKnownEmails = new Set([...Object.keys(DEFAULT_ROLES), ...managedRoles.map(r => r.id)]);
     const combinedRolesList = Array.from(allKnownEmails).map(email => {
       const customData = managedRoles.find(r => r.id === email);
-      return {
-        email: email,
-        role: customData ? customData.role : DEFAULT_ROLES[email],
-        isCustom: !!customData,
-        lastUpdatedBy: customData ? customData.lastUpdatedBy : 'System Default'
-      };
+      return { email: email, role: customData ? customData.role : DEFAULT_ROLES[email], isCustom: !!customData, lastUpdatedBy: customData ? customData.lastUpdatedBy : 'System Default' };
     }).sort((a, b) => {
       if (a.role === 'admin') return -1;
       if (b.role === 'admin') return 1;
-      if (a.role === 'manager' && b.role !== 'manager') return -1;
-      if (b.role === 'manager' && a.role !== 'manager') return 1;
+      if (a.role === 'manager_pse' && b.role !== 'manager_pse') return -1;
+      if (b.role === 'manager_pse' && a.role !== 'manager_pse') return 1;
       return a.email.localeCompare(b.email);
     });
 
@@ -671,21 +910,15 @@ export default function App() {
                   <label className="block text-sm font-bold text-gray-700 mb-1.5">Pilih Privilege Role</label>
                   <select name="role" required className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none font-semibold">
                     <option value="staff">Staff / PSE (Akses Terbatas)</option>
-                    <option value="manager">Manager (Akses Penuh + Penilai)</option>
-                    <option value="admin">Admin (Akses Penuh + Admin Panel)</option>
+                    <option value="manager_pse">Manager PSE (Wajib Menilai Semua)</option>
+                    <option value="manager_other">Manager Divisi Lain (Opsional, Tanpa Kuantitatif)</option>
+                    <option value="admin">Admin (Akses Penuh)</option>
                   </select>
                 </div>
                 <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg flex items-center justify-center transition-colors mt-2">
                   <Save size={18} className="mr-2" /> Simpan Konfigurasi
                 </button>
               </form>
-              <div className="mt-6 bg-blue-50 p-4 rounded-xl border border-blue-100 text-xs text-blue-800 leading-relaxed">
-                <span className="font-bold">Info Hak Akses:</span>
-                <ul className="list-disc pl-4 mt-2 space-y-1">
-                  <li><b>Manager:</b> Bisa melihat semua project, evaluasi, dan memberikan nilai pada form 360°.</li>
-                  <li><b>Staff / PSE:</b> Hanya bisa melihat dashboard dan project yang ditugaskan kepada mereka. Menu form penilaian akan disembunyikan.</li>
-                </ul>
-              </div>
             </div>
           </div>
 
@@ -700,29 +933,22 @@ export default function App() {
                     <tr>
                       <th className="px-6 py-4">Alamat Email</th>
                       <th className="px-6 py-4 text-center">Tipe Role</th>
-                      <th className="px-6 py-4 text-center">Status Data</th>
                       <th className="px-6 py-4 text-center">Aksi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {combinedRolesList.map((item, idx) => {
+                    {combinedRolesList.map((item) => {
                       let roleStyle = "bg-gray-100 text-gray-600";
                       if (item.role === 'admin') roleStyle = "bg-purple-100 text-purple-700 border border-purple-200";
-                      else if (item.role === 'manager') roleStyle = "bg-blue-100 text-blue-700 border border-blue-200";
+                      else if (item.role === 'manager_pse') roleStyle = "bg-blue-100 text-blue-700 border border-blue-200";
+                      else if (item.role === 'manager_other') roleStyle = "bg-orange-100 text-orange-700 border border-orange-200";
                       else if (item.role === 'staff') roleStyle = "bg-emerald-100 text-emerald-700 border border-emerald-200";
 
                       return (
                         <tr key={item.email} className="hover:bg-slate-50 transition-colors group">
                           <td className="px-6 py-3 font-semibold text-gray-800">{item.email}</td>
                           <td className="px-6 py-3 text-center">
-                            <span className={`px-3 py-1 rounded text-xs font-bold shadow-sm uppercase ${roleStyle}`}>{item.role}</span>
-                          </td>
-                          <td className="px-6 py-3 text-center text-xs">
-                            {item.isCustom ? (
-                              <span className="text-orange-600 font-bold flex items-center justify-center"><FileEdit size={12} className="mr-1"/> Override DB</span>
-                            ) : (
-                              <span className="text-gray-400 font-semibold">System Default</span>
-                            )}
+                            <span className={`px-3 py-1 rounded text-xs font-bold shadow-sm uppercase ${roleStyle}`}>{item.role === 'manager_other' ? 'Manager Div. Lain' : item.role === 'manager_pse' ? 'Manager PSE' : item.role}</span>
                           </td>
                           <td className="px-6 py-3 text-center">
                             {item.isCustom && item.email !== 'nafi@kayreach.com' && (
@@ -745,10 +971,9 @@ export default function App() {
   };
 
   const renderProjectTracking = () => {
-    // Terapkan Filter Tambahan di View (Search, Priority, dll) kepada visibleProjects
     const displayProjects = visibleProjects.filter(proj => {
-      const matchSearch = proj.client.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          (proj.solution && proj.solution.toLowerCase().includes(searchQuery.toLowerCase()));
+      const clientName = proj.client || '';
+      const matchSearch = clientName.toLowerCase().includes(searchQuery.toLowerCase());
       const matchPriority = projectFilters.priority ? proj.priority === projectFilters.priority : true;
       const matchPM = projectFilters.pm ? (proj.pm === projectFilters.pm || proj.backup === projectFilters.pm) : true;
       const matchPhase = projectFilters.phase ? proj.phase === projectFilters.phase : true;
@@ -759,7 +984,8 @@ export default function App() {
     return (
       <div className="space-y-6 animate-in fade-in">
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden relative">
-          <div className="px-6 py-5 border-b border-gray-200 bg-white flex justify-between items-center flex-wrap gap-4">
+          
+          <div className="px-6 py-5 bg-white flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
               <h2 className="text-lg font-bold text-gray-800 flex items-center">
                 <Briefcase className="mr-2 text-blue-600" size={20}/> Database Project Monitoring
@@ -769,75 +995,89 @@ export default function App() {
               </p>
             </div>
             
-            {/* Hanya Admin & Manager yang bisa menambah/import/export project */}
-            {(userRole === 'admin' || userRole === 'manager') && (
-              <div className="flex items-center gap-2">
-                <input type="file" id="excel-import" accept=".csv" className="hidden" onChange={handleImportProjects}/>
-                <button onClick={() => document.getElementById('excel-import').click()} className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center shadow-sm" title="Upload CSV">
-                  <Upload size={16} className="mr-2" /> Import CSV
+            {canManageProjectFull && (
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedProjects.length > 0 && (
+                   <button onClick={handleBulkDeleteProjects} className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center shadow-sm animate-in fade-in zoom-in-95 mr-1" title="Hapus Project Terpilih">
+                     <Trash2 size={16} className="mr-2" /> Hapus Terpilih ({selectedProjects.length})
+                   </button>
+                )}
+                <input type="file" id="excel-import" accept=".csv, .xlsx, .xls" className="hidden" onChange={handleImportProjects}/>
+                <button onClick={() => document.getElementById('excel-import').click()} className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center shadow-sm" title="Upload Excel/CSV">
+                  <Upload size={16} className="mr-2" /> Import Excel/CSV
                 </button>
                 <button onClick={handleExportProjects} className="bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center shadow-sm">
                   <Download size={16} className="mr-2" /> Export
                 </button>
-                <button onClick={() => { setProjectForm({ id: '', client: '', priority: 'Medium', pm: '', backup: '', status: 'Not started', phase: 'Identifikasi', solution: 'UC' }); setIsProjectModalOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center shadow-sm ml-2">
+                <button onClick={() => { setProjectForm({ id: '', client: '', priority: 'Medium', pm: '', backup: '', sales: '', status: 'Not started', phase: 'Identifikasi', startDate: '', endDate: '', linkDoc: '', noteHistory: [] }); setIsProjectModalOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center shadow-sm ml-1">
                   <Plus size={16} className="mr-2" /> Tambah Project
                 </button>
               </div>
             )}
           </div>
+
+          {/* FILTER BAR DIATAS TABEL */}
+          <div className="bg-slate-50 border-y border-gray-200 px-6 py-3 flex flex-wrap items-center gap-3">
+            <div className="flex items-center bg-white border border-gray-300 rounded-lg px-3 py-2 shadow-sm flex-1 min-w-[200px] max-w-sm">
+              <Search size={16} className="text-gray-400 mr-2"/>
+              <input type="text" placeholder="Cari nama project / client..." className="bg-transparent text-sm outline-none w-full font-medium" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+            </div>
+            <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shadow-sm outline-none hover:border-gray-400 focus:border-blue-500 transition-colors" value={projectFilters.priority} onChange={(e) => setProjectFilters({...projectFilters, priority: e.target.value})}>
+              <option value="">Semua Prioritas</option>
+              <option value="High">High</option>
+              <option value="Medium">Medium</option>
+              <option value="Low">Low</option>
+            </select>
+            <select disabled={userRole === 'staff'} className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shadow-sm outline-none disabled:bg-gray-100 disabled:text-gray-400 hover:border-gray-400 focus:border-blue-500 transition-colors" value={projectFilters.pm} onChange={(e) => setProjectFilters({...projectFilters, pm: e.target.value})}>
+              <option value="">Semua PSE</option>
+              {PSE_NAMES.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+            <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shadow-sm outline-none hover:border-gray-400 focus:border-blue-500 transition-colors" value={projectFilters.phase} onChange={(e) => setProjectFilters({...projectFilters, phase: e.target.value})}>
+              <option value="">Semua Fase</option>
+              <option value="Identifikasi">Identifikasi Awal</option>
+              <option value="Penawaran & Proposal">Penawaran & Proposal</option>
+              <option value="PoC & Testing">PoC & Testing</option>
+              <option value="Instalasi">Instalasi & Deployment</option>
+              <option value="BAST">BAST / Handover</option>
+            </select>
+            <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shadow-sm outline-none hover:border-gray-400 focus:border-blue-500 transition-colors" value={projectFilters.status} onChange={(e) => setProjectFilters({...projectFilters, status: e.target.value})}>
+              <option value="">Semua Status</option>
+              <option value="Not started">Not started</option>
+              <option value="In progress">In progress</option>
+              <option value="Pending">Pending (Hold)</option>
+              <option value="Completed">Completed (Won)</option>
+            </select>
+            {(projectFilters.priority || projectFilters.pm || projectFilters.phase || projectFilters.status || searchQuery) && (
+              <button onClick={() => {setProjectFilters({priority:'', pm:'', phase:'', status:''}); setSearchQuery('');}} className="text-sm text-red-500 hover:text-red-700 font-bold px-2 py-2 flex items-center transition-colors">
+                <RefreshCw size={14} className="mr-1.5"/> Reset Filter
+              </button>
+            )}
+          </div>
           
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-gray-600 border-collapse min-w-[800px]">
-              <thead className="bg-slate-50 text-gray-700 uppercase font-semibold text-[11px] tracking-wider">
+            <table className="w-full text-left text-sm text-gray-600 border-collapse min-w-[1450px]">
+              <thead className="bg-slate-50 text-gray-700 uppercase font-semibold text-[11px] tracking-wider border-b border-gray-200">
                 <tr>
-                  <th className="px-4 py-3 rounded-tl-lg">Nama Klien / Project</th>
-                  <th className="px-4 py-3">Prioritas</th>
-                  <th className="px-4 py-3">Tim PSE (PM / BU)</th>
-                  <th className="px-4 py-3">Fase (Milestone)</th>
-                  <th className="px-4 py-3 text-center">Status</th>
-                  {(userRole === 'admin' || userRole === 'manager') && <th className="px-4 py-3 text-center rounded-tr-lg">Aksi</th>}
-                </tr>
-                <tr className="bg-gray-100/60 border-y border-gray-200 shadow-inner">
-                  <th className="px-4 py-2">
-                    <div className="flex items-center bg-white border border-gray-300 rounded px-2 py-1 shadow-sm">
-                      <Search size={12} className="text-gray-400 mr-1"/>
-                      <input type="text" placeholder="Cari nama project..." className="bg-transparent text-xs outline-none w-full font-normal normal-case" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                    </div>
-                  </th>
-                  <th className="px-4 py-2">
-                    <select className="w-full text-xs border border-gray-300 rounded px-1 py-1 font-normal bg-white shadow-sm outline-none normal-case" value={projectFilters.priority} onChange={(e) => setProjectFilters({...projectFilters, priority: e.target.value})}>
-                      <option value="">Semua Prioritas</option>
-                      <option value="High">High</option>
-                      <option value="Medium">Medium</option>
-                      <option value="Low">Low</option>
-                    </select>
-                  </th>
-                  <th className="px-4 py-2">
-                    <select disabled={userRole === 'staff'} className="w-full text-xs border border-gray-300 rounded px-1 py-1 font-normal bg-white shadow-sm outline-none normal-case disabled:bg-gray-100" value={projectFilters.pm} onChange={(e) => setProjectFilters({...projectFilters, pm: e.target.value})}>
-                      <option value="">Semua PSE</option>
-                      {PSE_NAMES.map(n => <option key={n} value={n}>{n}</option>)}
-                    </select>
-                  </th>
-                  <th className="px-4 py-2">
-                    <select className="w-full text-xs border border-gray-300 rounded px-1 py-1 font-normal bg-white shadow-sm outline-none normal-case" value={projectFilters.phase} onChange={(e) => setProjectFilters({...projectFilters, phase: e.target.value})}>
-                      <option value="">Semua Fase</option>
-                      <option value="Identifikasi">Identifikasi Awal</option>
-                      <option value="Penawaran & Proposal">Penawaran & Proposal</option>
-                      <option value="PoC & Testing">PoC & Testing</option>
-                      <option value="Instalasi">Instalasi & Deployment</option>
-                      <option value="BAST">BAST / Handover</option>
-                    </select>
-                  </th>
-                  <th className="px-4 py-2">
-                    <select className="w-full text-xs border border-gray-300 rounded px-1 py-1 font-normal bg-white shadow-sm outline-none normal-case" value={projectFilters.status} onChange={(e) => setProjectFilters({...projectFilters, status: e.target.value})}>
-                      <option value="">Semua Status</option>
-                      <option value="Not started">Not started</option>
-                      <option value="In progress">In progress</option>
-                      <option value="Pending">Pending (Hold)</option>
-                      <option value="Completed">Completed (Won)</option>
-                    </select>
-                  </th>
-                  {(userRole === 'admin' || userRole === 'manager') && <th className="px-4 py-2 text-center normal-case"><button onClick={() => setProjectFilters({priority:'', pm:'', phase:'', status:''})} className="text-[10px] text-gray-500 hover:text-red-600 underline font-semibold transition-colors">Clear</button></th>}
+                  {canDeleteProject && (
+                    <th className="px-4 py-4 w-12 text-center border-r border-gray-200">
+                      <input 
+                        type="checkbox" 
+                        onChange={(e) => handleSelectAllProjects(e, displayProjects)} 
+                        checked={displayProjects.length > 0 && selectedProjects.length === displayProjects.length} 
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer w-4 h-4 shadow-sm" 
+                      />
+                    </th>
+                  )}
+                  <th className="px-4 py-4 w-56">Nama Klien / Project</th>
+                  <th className="px-4 py-4 w-28 text-center">Prioritas</th>
+                  <th className="px-4 py-4 w-40">Tim PSE (Inline Edit)</th>
+                  <th className="px-4 py-4 w-40">Sales (Inline Edit)</th>
+                  <th className="px-4 py-4 w-40">Timeline (Tgl)</th>
+                  <th className="px-4 py-4 w-40">Fase (Milestone)</th>
+                  <th className="px-4 py-4 text-center w-36">Status</th>
+                  <th className="px-4 py-4 min-w-[340px]">Histori Catatan / Update Progress</th>
+                  <th className="px-4 py-4 w-44 text-center">Dokumen</th>
+                  {canManageProjectFull && <th className="px-4 py-4 text-center w-24">Aksi</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -851,33 +1091,92 @@ export default function App() {
                   if(proj.priority === 'High') priorityColor = "bg-red-50 text-red-600 border-red-200";
                   else if(proj.priority === 'Medium') priorityColor = "bg-yellow-50 text-yellow-600 border-yellow-200";
 
+                  const isSelected = selectedProjects.includes(proj.id);
+
                   return (
-                    <tr key={proj.id} className="hover:bg-blue-50/30 transition-colors group">
-                      <td className="px-4 py-3">
-                        <p className="font-bold text-gray-800 text-base">{proj.client}</p>
-                        <p className="text-xs text-gray-500 mt-0.5">{proj.solution}</p>
+                    <tr key={proj.id} className={`hover:bg-blue-50/50 transition-colors group items-start ${isSelected ? 'bg-blue-50/70' : ''}`}>
+                      {canDeleteProject && (
+                        <td className="px-4 py-4 align-top text-center border-r border-gray-100">
+                           <input 
+                              type="checkbox" 
+                              checked={isSelected} 
+                              onChange={() => handleSelectProject(proj.id)} 
+                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer w-4 h-4 mt-1" 
+                           />
+                        </td>
+                      )}
+                      <td className="px-4 py-4 align-top">
+                        <p className="font-bold text-gray-800 text-base leading-tight">{proj.client}</p>
                       </td>
-                      <td className="px-4 py-3 w-32">
+                      <td className="px-4 py-4 align-top text-center">
                         <select 
-                          disabled={userRole === 'staff'}
+                          disabled={!canManageProjectFull}
                           value={proj.priority} 
                           onChange={(e) => handleInlineProjectUpdate(proj.id, 'priority', e.target.value)}
-                          className={`w-full text-[11px] font-bold px-2 py-1.5 rounded border outline-none transition ${priorityColor} ${userRole === 'staff' ? 'appearance-none cursor-default' : 'cursor-pointer'}`}
+                          className={`w-full text-[11px] font-bold px-2 py-1.5 rounded border outline-none text-center transition ${priorityColor} ${!canManageProjectFull ? 'appearance-none cursor-default opacity-80' : 'cursor-pointer hover:shadow-sm'}`}
                         >
                           <option value="High">HIGH</option><option value="Medium">MEDIUM</option><option value="Low">LOW</option>
                         </select>
                       </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col gap-1 text-xs">
-                          <span className="flex items-center"><span className="font-semibold text-blue-600 bg-blue-50 px-1 rounded mr-1">PM:</span> {proj.pm || '-'}</span>
-                          <span className="flex items-center"><span className="font-semibold text-gray-500 bg-gray-100 px-1 rounded mr-1">BU:</span> {proj.backup || '-'}</span>
+                      <td className="px-4 py-4 align-top">
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex flex-col">
+                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">PM Utama</span>
+                            <select 
+                              disabled={!canManageProjectFull}
+                              value={proj.pm || ''} 
+                              onChange={(e) => handleInlineProjectUpdate(proj.id, 'pm', e.target.value)}
+                              className={`w-full text-xs font-bold px-2 py-1.5 rounded border outline-none transition ${canManageProjectFull ? 'bg-white border-gray-300 text-blue-700 hover:border-blue-400 focus:border-blue-500 cursor-pointer shadow-sm' : 'bg-gray-50 text-gray-600 border-transparent appearance-none cursor-default'}`}
+                            >
+                              <option value="">- Set PM -</option>
+                              {PSE_NAMES.map(n => <option key={n} value={n}>{n}</option>)}
+                            </select>
+                          </div>
+                          <div className="flex flex-col mt-0.5">
+                            <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Backup</span>
+                            <select 
+                              disabled={!canManageProjectFull}
+                              value={proj.backup || ''} 
+                              onChange={(e) => handleInlineProjectUpdate(proj.id, 'backup', e.target.value)}
+                              className={`w-full text-xs font-semibold px-2 py-1.5 rounded border outline-none transition ${canManageProjectFull ? 'bg-white border-gray-300 text-gray-700 hover:border-blue-400 focus:border-blue-500 cursor-pointer shadow-sm' : 'bg-gray-50 text-gray-500 border-transparent appearance-none cursor-default'}`}
+                            >
+                              <option value="">- Set Backup -</option>
+                              {PSE_NAMES.map(n => <option key={n} value={n}>{n}</option>)}
+                            </select>
+                          </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 w-44">
+                      <td className="px-4 py-4 align-top">
+                        <div className="flex flex-col">
+                          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Assigned Sales</span>
+                          <select 
+                            disabled={!canManageProjectFull}
+                            value={proj.sales || ''} 
+                            onChange={(e) => handleInlineProjectUpdate(proj.id, 'sales', e.target.value)}
+                            className={`w-full text-xs font-semibold px-2 py-1.5 rounded border outline-none transition ${canManageProjectFull ? 'bg-white border-gray-300 text-gray-800 hover:border-blue-400 focus:border-blue-500 cursor-pointer shadow-sm' : 'bg-gray-50 text-gray-600 border-transparent appearance-none cursor-default'}`}
+                          >
+                            <option value="">- Pilih Sales -</option>
+                            {SALES_NAMES.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 align-top">
+                        <div className="flex flex-col gap-2">
+                          <div>
+                             <span className="text-[10px] font-bold text-gray-400 block mb-0.5 uppercase tracking-wider">Start</span>
+                             <input type="date" value={proj.startDate || ''} onChange={(e) => handleInlineProjectUpdate(proj.id, 'startDate', e.target.value)} className="w-full text-xs border border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white bg-gray-50 rounded px-2 py-1.5 outline-none transition" />
+                          </div>
+                          <div>
+                             <span className="text-[10px] font-bold text-gray-400 block mb-0.5 uppercase tracking-wider">Target End</span>
+                             <input type="date" value={proj.endDate || ''} onChange={(e) => handleInlineProjectUpdate(proj.id, 'endDate', e.target.value)} className="w-full text-xs border border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white bg-gray-50 rounded px-2 py-1.5 outline-none transition" />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 align-top">
                         <select 
                           value={proj.phase} 
                           onChange={(e) => handleInlineProjectUpdate(proj.id, 'phase', e.target.value)}
-                          className="w-full bg-transparent border border-transparent hover:border-gray-300 focus:border-blue-500 rounded px-1 py-1 text-xs font-semibold text-gray-700 outline-none cursor-pointer transition-colors"
+                          className="w-full bg-white border border-gray-200 hover:border-gray-300 focus:border-blue-500 rounded px-2 py-2 text-xs font-bold text-gray-700 outline-none cursor-pointer transition shadow-sm"
                         >
                           <option value="Identifikasi">Identifikasi Awal</option>
                           <option value="Penawaran & Proposal">Penawaran & Proposal</option>
@@ -886,20 +1185,75 @@ export default function App() {
                           <option value="BAST">BAST / Handover</option>
                         </select>
                       </td>
-                      <td className="px-4 py-3 text-center w-36">
+                      <td className="px-4 py-4 align-top text-center">
                         <select 
                           value={proj.status} 
                           onChange={(e) => handleInlineProjectUpdate(proj.id, 'status', e.target.value)}
-                          className={`w-full px-2 py-1.5 rounded text-[11px] font-bold border shadow-sm outline-none cursor-pointer text-center transition ${statusColor}`}
+                          className={`w-full px-2 py-2 rounded text-[11px] font-bold border shadow-sm outline-none cursor-pointer text-center transition ${statusColor}`}
                         >
                           <option value="Not started">Not started</option><option value="In progress">In progress</option><option value="Pending">Pending (Hold)</option><option value="Completed">Completed (Won)</option>
                         </select>
                       </td>
-                      {(userRole === 'admin' || userRole === 'manager') && (
-                        <td className="px-4 py-3 text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            <button onClick={() => {setProjectForm(proj); setIsProjectModalOpen(true);}} className="p-1.5 text-blue-500 hover:bg-blue-100 rounded transition opacity-60 hover:opacity-100"><FileEdit size={16}/></button>
-                            <button onClick={() => handleDeleteProject(proj.id)} className="p-1.5 text-red-500 hover:bg-red-100 rounded transition opacity-60 hover:opacity-100"><Trash2 size={16}/></button>
+                      
+                      <td className="px-4 py-4 align-top">
+                        <div className="flex flex-col gap-2">
+                          <div className="max-h-[110px] overflow-y-auto space-y-2 bg-gray-50 border border-gray-200 rounded-lg p-2.5 shadow-inner">
+                            {proj.noteHistory && proj.noteHistory.map((n, i) => (
+                               <div key={i} className="text-[11px] border-b border-gray-200 pb-1.5 last:border-0 last:pb-0">
+                                 <div className="flex justify-between items-center mb-1">
+                                    <span className="font-bold text-gray-800">{n.author}</span>
+                                    <span className="text-[9px] font-semibold text-gray-400 bg-white px-1.5 py-0.5 rounded border border-gray-200">
+                                      {new Date(n.timestamp).toLocaleString('id-ID', {day:'numeric', month:'short', hour:'2-digit', minute:'2-digit'})}
+                                    </span>
+                                 </div>
+                                 <p className="text-gray-600 leading-relaxed">{n.text}</p>
+                               </div>
+                            ))}
+                            {(!proj.noteHistory || proj.noteHistory.length === 0) && <span className="text-gray-400 text-[10px] italic flex items-center justify-center h-full">Belum ada catatan progres.</span>}
+                          </div>
+                          <div className="flex gap-1.5">
+                             <input 
+                               type="text" 
+                               value={newNotesMap[proj.id] || ''} 
+                               onChange={(e) => setNewNotesMap({...newNotesMap, [proj.id]: e.target.value})} 
+                               onKeyDown={(e) => e.key === 'Enter' && handleAddNoteToProject(proj.id)} 
+                               placeholder="Ketik update progres..." 
+                               className="text-xs w-full border border-gray-300 rounded-lg px-3 py-1.5 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm" 
+                             />
+                             <button onClick={() => handleAddNoteToProject(proj.id)} disabled={!newNotesMap[proj.id]} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-3 py-1.5 rounded-lg border border-transparent transition shadow-sm" title="Simpan Catatan">
+                               <Send size={14}/>
+                             </button>
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-4 align-top">
+                        <div className="flex items-center gap-1.5 justify-center">
+                          <input 
+                            type="url" 
+                            value={proj.linkDoc || ''} 
+                            onChange={(e) => handleInlineProjectUpdate(proj.id, 'linkDoc', e.target.value)}
+                            placeholder="Link GDrive..."
+                            className="w-full text-xs border border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white bg-gray-50 rounded px-2 py-2 outline-none transition"
+                          />
+                          {proj.linkDoc && (
+                            <a href={proj.linkDoc} target="_blank" rel="noopener noreferrer" className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-lg transition shadow-sm" title="Buka Dokumen di Tab Baru">
+                              <FileText size={16} />
+                            </a>
+                          )}
+                        </div>
+                      </td>
+                      {canManageProjectFull && (
+                        <td className="px-4 py-4 align-top text-center">
+                          <div className="flex items-center justify-center gap-2 mt-1">
+                            <button onClick={() => {setProjectForm(proj); setIsProjectModalOpen(true);}} className="p-1.5 text-blue-600 hover:bg-blue-100 hover:text-blue-800 rounded transition" title="Edit Detail Project">
+                              <FileEdit size={16}/>
+                            </button>
+                            {canDeleteProject && (
+                              <button onClick={() => handleDeleteProject(proj.id)} className="p-1.5 text-red-500 hover:bg-red-100 hover:text-red-700 rounded transition" title="Hapus Project">
+                                <Trash2 size={16}/>
+                              </button>
+                            )}
                           </div>
                         </td>
                       )}
@@ -907,7 +1261,7 @@ export default function App() {
                   )
                 })}
                 {displayProjects.length === 0 && (
-                  <tr><td colSpan="6" className="text-center py-10 text-gray-500 font-medium">Tidak ada project yang sesuai.</td></tr>
+                  <tr><td colSpan="11" className="text-center py-12 text-gray-500 font-medium bg-gray-50">Tidak ada project yang sesuai dengan filter pencarian Anda.</td></tr>
                 )}
               </tbody>
             </table>
@@ -922,10 +1276,10 @@ export default function App() {
                 <h3 className="text-lg font-bold text-gray-800">{projectForm.id ? 'Edit Project' : 'Tambah Project Baru'}</h3>
                 <button onClick={() => setIsProjectModalOpen(false)} className="text-gray-400 hover:text-gray-800"><X size={20}/></button>
               </div>
-              <div className="p-6 space-y-4">
+              <div className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
                 <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">Nama Client / Project</label>
-                  <input type="text" value={projectForm.client} onChange={e=>setProjectForm({...projectForm, client: e.target.value})} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Contoh: Traveloka - Upgrade UC" />
+                  <input type="text" value={projectForm.client} onChange={e=>setProjectForm({...projectForm, client: e.target.value})} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Contoh: Traveloka - Upgrade" />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -935,11 +1289,10 @@ export default function App() {
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-gray-700 mb-1">Solusi Utama</label>
-                    <select value={projectForm.solution} onChange={e=>setProjectForm({...projectForm, solution: e.target.value})} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
-                      <option value="UC">Unified Communications (UC)</option>
-                      <option value="Network & CyberSec">Network & CyberSec</option>
-                      <option value="Other">Lainnya</option>
+                    <label className="block text-sm font-bold text-gray-700 mb-1">Sales Person</label>
+                    <select value={projectForm.sales || ''} onChange={e=>setProjectForm({...projectForm, sales: e.target.value})} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none">
+                      <option value="">- Pilih Sales -</option>
+                      {SALES_NAMES.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
                 </div>
@@ -959,10 +1312,23 @@ export default function App() {
                     </select>
                   </div>
                 </div>
+                
+                {/* TIMELINE FIELDS */}
+                <div className="grid grid-cols-2 gap-4 bg-blue-50 p-3 rounded-lg border border-blue-100">
+                  <div>
+                    <label className="block text-sm font-bold text-blue-800 mb-1">Start Date</label>
+                    <input type="date" value={projectForm.startDate || ''} onChange={e=>setProjectForm({...projectForm, startDate: e.target.value})} className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-bold text-blue-800 mb-1">Estimation End Date</label>
+                    <input type="date" value={projectForm.endDate || ''} onChange={e=>setProjectForm({...projectForm, endDate: e.target.value})} className="w-full border border-blue-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-bold text-gray-700 mb-1">Fase / Milestone Saat Ini</label>
-                    <select value={projectForm.phase} onChange={e=>setProjectForm({...projectForm, phase: e.target.value})} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none bg-blue-50 font-medium">
+                    <select value={projectForm.phase} onChange={e=>setProjectForm({...projectForm, phase: e.target.value})} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm outline-none font-medium">
                       <option value="Identifikasi">Identifikasi Awal</option>
                       <option value="Penawaran & Proposal">Penawaran & Proposal</option>
                       <option value="PoC & Testing">PoC & Testing</option>
@@ -980,10 +1346,18 @@ export default function App() {
                     </select>
                   </div>
                 </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Tambahkan Catatan Baru (Opsional)</label>
+                  <textarea value={projectForm.newDraftNote || ''} onChange={e=>setProjectForm({...projectForm, newDraftNote: e.target.value})} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" rows="2" placeholder="Catatan ini akan ditambahkan ke log histori..."></textarea>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-1">Link Dokumentasi GDrive (Opsional)</label>
+                  <input type="url" value={projectForm.linkDoc || ''} onChange={e=>setProjectForm({...projectForm, linkDoc: e.target.value})} className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="https://drive.google.com/..." />
+                </div>
               </div>
               <div className="p-4 border-t border-gray-100 flex justify-end gap-3 bg-gray-50">
                 <button onClick={() => setIsProjectModalOpen(false)} className="px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-200 rounded-lg">Batal</button>
-                <button onClick={handleSaveProject} className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center">
+                <button onClick={handleSaveProject} className="px-5 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center shadow-md">
                   <Save size={16} className="mr-2"/> Simpan Project
                 </button>
               </div>
@@ -995,7 +1369,6 @@ export default function App() {
   };
 
   const renderDashboard = () => {
-    // Terapkan visibility
     const sortedEvals = [...visibleEvaluations].sort((a, b) => b.finalScore - a.finalScore);
     const avgTeamScore = visibleEvaluations.length > 0 ? (visibleEvaluations.reduce((acc, curr) => acc + Number(curr.finalScore || 0), 0) / visibleEvaluations.length).toFixed(2) : 0;
     const topPerformers = sortedEvals.slice(0, 5);
@@ -1005,6 +1378,17 @@ export default function App() {
       count: visibleEvaluations.filter(e => e.status === rule.label).length
     }));
     const maxDistribution = Math.max(...distribution.map(d => d.count), 1);
+
+    const getProfilePhoto = (pseName) => {
+      const email = Object.keys(EMAIL_TO_PSE_MAP).find(e => EMAIL_TO_PSE_MAP[e] === pseName);
+      if (email && userProfiles[email] && userProfiles[email].photoURL) {
+        return userProfiles[email].photoURL;
+      }
+      if (activeUser && staffIdentity === pseName && activeUser.photoURL) return activeUser.photoURL;
+      return null;
+    };
+
+    const top1Photo = sortedEvals[0] ? getProfilePhoto(sortedEvals[0].name) : null;
 
     return (
       <div className="space-y-6 animate-in fade-in">
@@ -1024,7 +1408,9 @@ export default function App() {
             </div>
           </div>
           <div className="bg-gradient-to-br from-white to-purple-50 p-6 rounded-2xl border border-purple-100 shadow-sm flex items-center space-x-4">
-            <div className="p-4 bg-purple-600 text-white rounded-xl shadow-inner"><Award size={28} /></div>
+            <div className={`flex items-center justify-center rounded-xl shadow-inner shrink-0 overflow-hidden ${top1Photo ? 'w-14 h-14 bg-white border-2 border-purple-200' : 'p-4 bg-purple-600 text-white'}`}>
+              {top1Photo ? <img src={top1Photo} alt="Top 1" className="w-full h-full object-cover" /> : <Award size={28} />}
+            </div>
             <div>
               <p className="text-sm text-purple-600 font-semibold mb-1 uppercase tracking-wide">{userRole === 'staff' ? 'Status Anda' : 'Top Performer'}</p>
               <p className="text-xl font-black text-gray-800 truncate">{userRole === 'staff' ? (sortedEvals[0]?.status || 'Belum ada nilai') : (sortedEvals[0]?.name || '-')}</p>
@@ -1032,7 +1418,6 @@ export default function App() {
           </div>
         </div>
 
-        {/* Sembunyikan Grafik jika user adalah staff */}
         {userRole !== 'staff' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
@@ -1059,12 +1444,16 @@ export default function App() {
               <div className="space-y-5">
                 {topPerformers.map((emp, index) => {
                   const colorConfig = getScoreInfo(emp.finalScore).barColor;
+                  const photoUrl = getProfilePhoto(emp.name);
+                  
                   return (
                     <div key={emp.id} className="relative cursor-pointer group" onClick={() => setSelectedPseDetailId(emp.id)}>
                       <div className="flex justify-between text-sm mb-1">
                         <span className="font-semibold text-gray-700 flex items-center group-hover:text-blue-600 transition">
-                          <span className="w-5 h-5 inline-flex items-center justify-center bg-gray-100 text-gray-500 rounded-full text-xs mr-2">{index + 1}</span>
-                          {emp.name} <span className="text-xs text-gray-400 font-normal ml-2">({emp.spec})</span>
+                          <div className="w-6 h-6 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-xs mr-3 overflow-hidden border border-gray-200 shrink-0">
+                            {photoUrl ? <img src={photoUrl} alt={emp.name} className="w-full h-full object-cover" /> : <span>{index + 1}</span>}
+                          </div>
+                          {emp.name}
                         </span>
                         <span className="font-bold text-gray-900 group-hover:text-blue-600">{Number(emp.finalScore || 0).toFixed(2)}</span>
                       </div>
@@ -1085,7 +1474,7 @@ export default function App() {
               <h2 className="text-lg font-bold text-gray-800">{userRole === 'staff' ? 'Detail Skor Anda' : 'Detail Skor Tim Gabungan (360°)'}</h2>
             </div>
             
-            {(userRole === 'admin' || userRole === 'manager') && (
+            {(userRole === 'admin' || ['manager_pse', 'manager_other'].includes(userRole)) && (
               <div className="flex gap-2">
                 <button onClick={handleExportKPI} className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center shadow-sm">
                   <Download size={16} className="mr-2" /> Export Rekap KPI (.csv)
@@ -1118,7 +1507,6 @@ export default function App() {
                       <td className="px-6 py-4 font-medium text-gray-900">{userRole === 'staff' ? '-' : idx + 1}</td>
                       <td className="px-6 py-4">
                         <p className="font-bold text-gray-800">{emp.name}</p>
-                        <p className="text-xs text-gray-500">{emp.spec}</p>
                       </td>
                       <td className="px-6 py-4 text-center font-mono">{Number(emp.scores?.kuantitatif || 0).toFixed(2)}</td>
                       <td className="px-6 py-4 text-center font-mono">{Number(emp.scores?.kualitatif || 0).toFixed(2)}</td>
@@ -1162,11 +1550,30 @@ export default function App() {
     const liveStats = (() => {
         let totals = { kuantitatif: 0, kualitatif: 0, pengembangan: 0, kultur: 0 };
         let counts = { kuantitatif: 0, kualitatif: 0, pengembangan: 0, kultur: 0 };
-        Object.entries(formData.metrics).forEach(([catId, items]) => {
-          Object.values(items).forEach(item => {
-            if (item.skor && Number(item.skor) > 0) { totals[catId] += Number(item.skor); counts[catId]++; }
-          });
+        
+        Object.entries(METRICS_CONFIG).forEach(([catId, category]) => {
+            category.items.forEach(item => {
+                const itemData = formData.metrics[catId]?.[item.id] || {};
+                let val = 0;
+                
+                if (category.type === 'auto') {
+                    if (itemData.realisasi) {
+                       val = (Number(itemData.realisasi) / item.target) * 10;
+                       if (val > 10) val = 10; 
+                    } else if (itemData.skor) {
+                       val = itemData.skor;
+                    }
+                } else {
+                    val = itemData[activeRoleConfig.scoreKey] || itemData.skor;
+                }
+
+                if (val && Number(val) > 0) { 
+                    totals[catId] += Number(val); 
+                    counts[catId]++; 
+                }
+            });
         });
+
         const averages = {
           kuantitatif: counts.kuantitatif ? (totals.kuantitatif / counts.kuantitatif) : 0,
           kualitatif: counts.kualitatif ? (totals.kualitatif / counts.kualitatif) : 0,
@@ -1200,7 +1607,7 @@ export default function App() {
                  <FileEdit size={16} className="mr-2" /> Revisi Nilai
                </button>
              ) : (
-               <button onClick={() => alert("Simpan Form Aktif...")} className="flex-1 md:flex-none flex justify-center items-center px-6 py-2.5 bg-gray-900 hover:bg-black text-white rounded-lg text-sm font-semibold shadow-md transition-colors">
+               <button onClick={handleSimpanFormClick} className="flex-1 md:flex-none flex justify-center items-center px-6 py-2.5 bg-gray-900 hover:bg-black text-white rounded-lg text-sm font-semibold shadow-md transition-colors">
                  <Save size={16} className="mr-2" /> {hasSubmitted ? 'Simpan Revisi' : 'Simpan Form'}
                </button>
              )}
@@ -1211,19 +1618,12 @@ export default function App() {
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
               <h3 className="text-md font-bold text-gray-800 mb-4 border-b pb-3">Pilih Karyawan yang Dinilai</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="grid grid-cols-1 gap-5">
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">Nama Lengkap PSE <span className="text-red-500">*</span></label>
                   <select value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 font-medium">
                     <option value="" disabled>-- Pilih Karyawan --</option>
                     {PSE_NAMES.map(name => <option key={name} value={name}>{name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Spesialisasi</label>
-                  <select value={formData.spec} disabled={true} className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm outline-none bg-gray-100 text-gray-500 cursor-not-allowed">
-                    <option value="UC">Unified Communications (UC)</option>
-                    <option value="Network & CyberSec">Network & CyberSec</option>
                   </select>
                 </div>
               </div>
@@ -1235,7 +1635,7 @@ export default function App() {
               </div>
             ) : (
               Object.entries(METRICS_CONFIG).map(([catId, category]) => {
-                if (category.type === 'auto' && activeRoleConfig.id !== 'manager') return null;
+                if (category.type === 'auto' && !activeRoleConfig.canRateQuant) return null;
 
                 return (
                   <div key={catId} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm animate-in fade-in duration-300">
@@ -1267,31 +1667,57 @@ export default function App() {
                             <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mt-2">
                               {category.type === 'auto' ? (
                                 <>
-                                  <div className="md:col-span-3">
-                                    <label className="block text-xs font-bold text-gray-700 mb-1.5">Aktual Realisasi</label>
+                                  <div className="md:col-span-12 lg:col-span-6">
+                                    <label className="block text-xs font-bold text-gray-700 mb-1.5 flex justify-between items-center">
+                                      <span>Aktual Realisasi {activeRoleConfig.isQuantRequired ? <span className="text-red-500 ml-1">*Wajib</span> : <span className="text-gray-400 font-normal ml-1">Opsional</span>}</span>
+                                      {itemData.realisasi > 0 && (
+                                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 shadow-sm animate-in zoom-in">
+                                          + {(((Math.min((Number(itemData.realisasi) / item.target) * 10, 10)) / category.items.length) * category.weight).toFixed(2)} pts
+                                        </span>
+                                      )}
+                                    </label>
                                     <input type="number" step="0.01" min="0" disabled={isLocked} value={itemData.realisasi || ''} onChange={(e) => {
                                        const newData = {...formData};
                                        if(!newData.metrics[catId]) newData.metrics[catId] = {};
                                        if(!newData.metrics[catId][item.id]) newData.metrics[catId][item.id] = {};
                                        newData.metrics[catId][item.id].realisasi = e.target.value;
                                        setFormData(newData);
-                                    }} className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm outline-none" />
+                                    }} className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
                                   </div>
                                 </>
                               ) : (
                                 <>
-                                  <div className="md:col-span-4">
-                                    <label className="block text-xs font-bold text-gray-700 mb-1.5">Beri Skor (1 - 10)</label>
-                                    <select value={itemData[myScoreKey] || ''} disabled={isLocked} onChange={(e) => {
-                                        const newData = {...formData};
-                                        if(!newData.metrics[catId]) newData.metrics[catId] = {};
-                                        if(!newData.metrics[catId][item.id]) newData.metrics[catId][item.id] = {};
-                                        newData.metrics[catId][item.id][myScoreKey] = e.target.value;
-                                        setFormData(newData);
-                                    }} className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm outline-none font-semibold">
-                                      <option value="">- Pilih -</option>
-                                      {[10,9,8,7,6,5,4,3,2,1].map(n => <option key={n} value={n}>{n}</option>)}
-                                    </select>
+                                  <div className="md:col-span-12">
+                                    <label className="block text-xs font-bold text-gray-700 mb-2 flex justify-between items-center">
+                                      <span>Pilih Skor Anda (1 - 10) {activeRoleConfig.isOtherRequired ? <span className="text-red-500 ml-1">*Wajib</span> : <span className="text-gray-400 font-normal ml-1">Opsional</span>}</span>
+                                      {itemData[myScoreKey] > 0 && (
+                                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 shadow-sm animate-in zoom-in">
+                                          + {((Number(itemData[myScoreKey]) / category.items.length) * category.weight).toFixed(2)} pts
+                                        </span>
+                                      )}
+                                    </label>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                                        <button
+                                          key={n}
+                                          disabled={isLocked}
+                                          onClick={() => {
+                                            const newData = {...formData};
+                                            if(!newData.metrics[catId]) newData.metrics[catId] = {};
+                                            if(!newData.metrics[catId][item.id]) newData.metrics[catId][item.id] = {};
+                                            newData.metrics[catId][item.id][myScoreKey] = n;
+                                            setFormData(newData);
+                                          }}
+                                          className={`w-9 h-9 md:w-10 md:h-10 rounded-lg font-black text-sm md:text-base transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center ${
+                                            Number(itemData[myScoreKey]) === n 
+                                              ? 'bg-blue-600 text-white shadow-md scale-105 ring-2 ring-blue-300 ring-offset-1' 
+                                              : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-100 hover:text-gray-800'
+                                          }`}
+                                        >
+                                          {n}
+                                        </button>
+                                      ))}
+                                    </div>
                                   </div>
                                 </>
                               )}
@@ -1305,9 +1731,10 @@ export default function App() {
               })
             )}
           </div>
-          <div className="lg:col-span-1 hidden lg:block">
+          
+          <div className="lg:col-span-1 block w-full mt-4 lg:mt-0">
             {formData.name && (
-              <div className="bg-slate-800 rounded-2xl p-6 shadow-xl sticky top-24 text-white border border-slate-700 animate-in fade-in">
+              <div className="bg-slate-800 rounded-2xl p-6 shadow-xl sticky top-24 text-white border border-slate-700 animate-in slide-in-from-bottom-4 lg:slide-in-from-right-4">
                 <h3 className="text-lg font-bold mb-6 flex items-center border-b border-slate-700 pb-4">
                   <BarChart3 className="mr-3 text-blue-400" /> Live Preview
                 </h3>
@@ -1329,7 +1756,9 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-gray-900 pb-12">
+    <div className="min-h-screen bg-slate-50 font-sans text-gray-900 pb-12 relative">
+      {renderDialog()}
+      
       <nav className="bg-white border-b border-gray-200 px-6 py-4 sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center space-x-3">
@@ -1343,22 +1772,20 @@ export default function App() {
           </div>
           
           <div className="flex flex-col md:flex-row items-center gap-6">
-            <div className="flex bg-gray-100 p-1.5 rounded-xl shadow-inner border border-gray-200">
-              <button onClick={() => setActiveTab('projects')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center ${activeTab === 'projects' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-900'}`}>
-                <ListTodo size={16} className="mr-2" /> Project Tracker
-              </button>
-              <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center ${activeTab === 'dashboard' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-900'}`}>
+            <div className="flex bg-gray-100 p-1.5 rounded-xl shadow-inner border border-gray-200 overflow-x-auto max-w-full">
+              <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center whitespace-nowrap ${activeTab === 'dashboard' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-900'}`}>
                 <Activity size={16} className="mr-2" /> KPI Dashboard
               </button>
+              <button onClick={() => setActiveTab('projects')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center whitespace-nowrap ${activeTab === 'projects' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-900'}`}>
+                <ListTodo size={16} className="mr-2" /> Project Tracker
+              </button>
               
-              {/* Sembunyikan Tab Form untuk Staff */}
-              {(userRole === 'admin' || userRole === 'manager') && (
+              {(userRole === 'admin' || ['manager_pse', 'manager_other'].includes(userRole)) && (
                 <button onClick={() => setActiveTab('form')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center ${activeTab === 'form' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-900'}`}>
                   <FileEdit size={16} className="mr-2" /> Form Penilaian
                 </button>
               )}
 
-              {/* Tab Spesial Admin Panel */}
               {userRole === 'admin' && (
                 <button onClick={() => setActiveTab('admin')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center ${activeTab === 'admin' ? 'bg-slate-900 shadow text-white' : 'text-purple-600 hover:text-purple-800'}`}>
                   <Settings size={16} className="mr-2" /> Admin Panel
@@ -1367,16 +1794,16 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-4 md:border-l md:border-gray-300 md:pl-6">
-              {user && !user.isAnonymous ? (
+              {activeUser && !activeUser.isAnonymous ? (
                 <div className="flex items-center gap-3 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-100">
-                  <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs uppercase overflow-hidden">
-                    {user.photoURL ? <img src={user.photoURL} alt="Avatar" /> : String(user.displayName || user.email || 'U').charAt(0)}
+                  <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs uppercase overflow-hidden shadow-sm">
+                    {activeUser.photoURL ? <img src={activeUser.photoURL} alt="Avatar" /> : String(activeUser.displayName || activeUser.email || 'U').charAt(0)}
                   </div>
                   <div className="flex flex-col hidden sm:flex">
                     <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{activeRoleConfig.label}</span>
-                    <span className="text-xs font-black text-blue-700 truncate max-w-[120px]">{user.displayName || user.email || 'User'}</span>
+                    <span className="text-xs font-black text-blue-700 truncate max-w-[120px]">{activeUser.displayName || activeUser.email || 'User'}</span>
                   </div>
-                  <button onClick={() => auth.signOut()} className="ml-2 text-gray-400 hover:text-red-500 transition-colors" title="Logout">
+                  <button onClick={handleLogout} className="ml-2 text-gray-400 hover:text-red-500 transition-colors" title="Logout">
                     <LogOut size={16} />
                   </button>
                 </div>
@@ -1386,8 +1813,7 @@ export default function App() {
                 </button>
               )}
 
-              {/* Tampilkan Pilihan Identitas hanya jika user adalah staff dan emailnya tidak dikenali otomatis */}
-              {userRole === 'staff' && !EMAIL_TO_PSE_MAP[user.email?.toLowerCase()] && (
+              {activeUser && userRole === 'staff' && !EMAIL_TO_PSE_MAP[activeUser?.email?.toLowerCase() || ''] && (
                 <div className="flex flex-col border-l border-gray-300 pl-4 hidden md:flex animate-in zoom-in">
                   <span className="text-[10px] text-red-500 font-bold uppercase tracking-wider">Identitas Anda:</span>
                   <select value={staffIdentity} onChange={(e) => setStaffIdentity(e.target.value)} className="bg-red-50 border border-red-200 rounded px-1 text-xs font-black text-red-700 cursor-pointer outline-none">
