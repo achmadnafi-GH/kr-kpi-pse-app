@@ -161,12 +161,12 @@ function parseCSV(str) {
       let cc = str[c], nc = str[c+1];
       arr[row] = arr[row] || [];
       arr[row][col] = arr[row][col] || '';
-      if (cc == '"' && quote && nc == '"') { arr[row][col] += cc; ++c; continue; }
-      if (cc == '"') { quote = !quote; continue; }
-      if (cc == ',' && !quote) { ++col; continue; }
-      if (cc == '\r' && nc == '\n' && !quote) { ++row; col = 0; ++c; continue; }
-      if (cc == '\n' && !quote) { ++row; col = 0; continue; }
-      if (cc == '\r' && !quote) { ++row; col = 0; continue; }
+      if (cc === '"' && quote && nc === '"') { arr[row][col] += cc; ++c; continue; }
+      if (cc === '"') { quote = !quote; continue; }
+      if (cc === ',' && !quote) { ++col; continue; }
+      if (cc === '\r' && nc === '\n' && !quote) { ++row; col = 0; ++c; continue; }
+      if (cc === '\n' && !quote) { ++row; col = 0; continue; }
+      if (cc === '\r' && !quote) { ++row; col = 0; continue; }
       arr[row][col] += cc;
   }
   return arr;
@@ -180,10 +180,10 @@ export default function App() {
   
   // State Auth & Hak Akses
   const [user, setUser] = useState(null);
-  const [managedRoles, setManagedRoles] = useState([]); // Daftar kustom role dari DB
-  const [userRole, setUserRole] = useState('guest'); // guest, staff, manager, admin
-  const [staffIdentity, setStaffIdentity] = useState(''); // Nama PSE jika role staff
-  const [activeRoleConfig, setActiveRoleConfig] = useState(ROLE_CONFIG.staff); // Active Form Role
+  const [managedRoles, setManagedRoles] = useState([]); 
+  const [userRole, setUserRole] = useState('guest'); 
+  const [staffIdentity, setStaffIdentity] = useState(''); 
+  const [activeRoleConfig, setActiveRoleConfig] = useState(ROLE_CONFIG.staff); 
 
   // State Form Penilaian
   const [isRevisionMode, setIsRevisionMode] = useState(false);
@@ -219,7 +219,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Sinkronisasi Real-Time Database (Evals, Projects, Roles)
+  // Sinkronisasi Real-Time Database
   useEffect(() => {
     if (!user || !db) return;
     try {
@@ -253,17 +253,14 @@ export default function App() {
       const email = user.email?.toLowerCase() || '';
       let currentRole = 'staff';
 
-      // 1. Cek Data Kustom dari Database (Admin Panel Overrides)
       const customDbRole = managedRoles.find(r => r.id === email);
       if (customDbRole) {
         currentRole = customDbRole.role;
       } 
-      // 2. Cek Default Konfigurasi dari List Hardcode
       else if (DEFAULT_ROLES[email]) {
         currentRole = DEFAULT_ROLES[email];
       }
       
-      // 3. Hak Akses Mutlak (Owner Nafi selalu Admin)
       if (email === 'nafi@kayreach.com') {
         currentRole = 'admin';
       }
@@ -271,12 +268,10 @@ export default function App() {
       setUserRole(currentRole);
       setActiveRoleConfig(ROLE_CONFIG[currentRole] || ROLE_CONFIG.staff);
 
-      // Jika dia staff, deteksi dia PSE siapa berdasarkan Email Mapping
       if (currentRole === 'staff') {
         if (EMAIL_TO_PSE_MAP[email]) {
           setStaffIdentity(EMAIL_TO_PSE_MAP[email]);
         } else {
-           // Fallback: Cari nama yang mirip di displayName Google
           const match = PSE_NAMES.find(n => user.displayName?.toLowerCase().includes(n.toLowerCase()));
           if (match) setStaffIdentity(match);
         }
@@ -287,21 +282,19 @@ export default function App() {
     }
   }, [user, managedRoles]);
 
-  // Filter Data Berdasarkan Role (Data Visibility Rules)
   const visibleProjects = projects.filter(proj => {
     if (userRole === 'staff') {
       return proj.pm === staffIdentity || proj.backup === staffIdentity;
     }
-    return true; // Admin/Manager melihat semua
+    return true; 
   });
 
   const visibleEvaluations = evaluations.filter(e => {
     if (userRole === 'staff') {
       return e.name === staffIdentity;
     }
-    return true; // Admin/Manager melihat semua
+    return true; 
   });
-
 
   const handleGoogleLogin = async () => {
     if (!auth) {
@@ -337,6 +330,38 @@ export default function App() {
     if (finalScore >= 5) return SCORING_RULES[2];
     if (finalScore >= 3) return SCORING_RULES[3];
     return SCORING_RULES[4];
+  };
+
+  const handleSaveProject = async () => {
+    if (!user || userRole === 'guest') {
+      alert('Harap Sign-In terlebih dahulu!'); return;
+    }
+    if (!projectForm.client || !projectForm.pm) {
+      alert('Nama Client dan PM Wajib diisi!'); return;
+    }
+
+    const newProject = {
+      ...projectForm,
+      id: projectForm.id || Date.now().toString(),
+      lastUpdatedBy: user.displayName || user.email
+    };
+
+    if (db) {
+      try {
+        await setDoc(getDocRef('project_tracking', newProject.id), newProject);
+      } catch (error) {
+        alert("Gagal menyimpan Project.");
+      }
+    }
+    setIsProjectModalOpen(false);
+    setProjectForm({ id: '', client: '', priority: 'Medium', pm: '', backup: '', status: 'Not started', phase: 'Identifikasi', solution: 'UC' });
+  };
+
+  const handleDeleteProject = async (id) => {
+    if(!confirm('Anda yakin ingin menghapus project ini?')) return;
+    if (db && userRole !== 'guest') {
+      await deleteDoc(getDocRef('project_tracking', id));
+    }
   };
 
   const handleInlineProjectUpdate = async (id, field, value) => {
@@ -402,7 +427,7 @@ export default function App() {
     }
   };
 
-  // NATIVE EXCEL/CSV EXPORT & IMPORT LOGIC
+  // NATIVE EXCEL/CSV EXPORT & SMART IMPORT LOGIC
   const downloadCSV = (headers, rows, filename) => {
     const csvContent = [headers, ...rows]
       .map(row => row.map(val => `"${String(val || '').replace(/"/g, '""')}"`).join(','))
@@ -439,33 +464,58 @@ export default function App() {
         const rows = parseCSV(text);
         if (rows.length < 2) { alert("File kosong atau format tidak sesuai."); return; }
 
-        const headers = rows[0].map(h => h.trim());
+        // Bersihkan header (hilangkan BOM mark excel dan spasi berlebih)
+        const headers = rows[0].map(h => h ? h.replace(/^\uFEFF/, '').trim() : '');
         const data = rows.slice(1).map(row => {
           const obj = {};
           headers.forEach((h, i) => { obj[h] = row[i]; });
           return obj;
         });
 
+        // Smart Mapping Nama Panjang (Muhammad Nur Hidayat -> Dayat)
+        const mapPseName = (val) => {
+          if (!val) return '';
+          const v = val.toLowerCase();
+          if (v.includes('hidayat') || v.includes('dayat')) return 'Dayat';
+          if (v.includes('yanuar')) return 'Yanuar';
+          if (v.includes('arfindo')) return 'Arfindo';
+          if (v.includes('damardjati')) return 'Damardjati';
+          if (v.includes('kuncoro')) return 'Eko Kuncoro';
+          if (v.includes('fakhri')) return 'Fakhri';
+          if (v.includes('ghazy')) return 'Ghazy';
+          if (v.includes('pankaj')) return 'Pankaj';
+          if (v.includes('syamil')) return 'Syamil';
+          if (v.includes('hakim')) return 'Hakim';
+          if (v.includes('tyan')) return 'Tyan';
+          if (v.includes('reisya')) return 'Reisya';
+          return val.split(' ')[0]; // Fallback jika tidak dikenali
+        };
+
         let importedCount = 0;
         const newProjectsList = [...projects];
+        const firestorePromises = [];
 
         for (const row of data) {
+          // Dukung header format baru & format lama
           const client = row['Nama Klien / Project'] || row['User'] || row['Client'];
-          if (!client || !client.trim()) continue;
+          
+          // Lewati jika baris kosong / baris tanpa nama client
+          if (!client || !client.trim() || client.includes(',,,,')) continue;
 
           const newProj = {
-            id: row['ID Sistem'] || row['ID Sistem (Abaikan)'] || Date.now().toString() + Math.random().toString(36).substr(2, 5),
-            client: client,
+            id: row['ID Sistem'] || `proj_${Date.now()}_${importedCount}`,
+            client: client.trim(),
             solution: row['Solusi Utama'] || row['Solution'] || 'UC',
             priority: row['Prioritas'] || row['Priority'] || 'Medium',
-            pm: row['PM (Primary PSE)'] || row['PM'] || '',
-            backup: row['Backup PSE'] || row['Backup'] || '',
-            phase: row['Fase / Milestone'] || row['Milestone'] || 'Identifikasi',
-            status: row['Status'] || row['Status Project'] || 'Not started',
+            pm: mapPseName(row['PM (Primary PSE)'] || row['PM']),
+            backup: mapPseName(row['Backup PSE'] || row['Backup']),
+            phase: row['Fase / Milestone'] || row['Status Project'] || 'Identifikasi',
+            status: row['Status'] || 'Not started',
             lastUpdatedBy: user.displayName || user.email
           };
 
-          const existingIndex = newProjectsList.findIndex(p => p.id === newProj.id || p.client === newProj.client);
+          // Timpa data lama jika ID cocok ATAU Nama Klien cocok
+          const existingIndex = newProjectsList.findIndex(p => p.id === newProj.id || p.client.toLowerCase() === newProj.client.toLowerCase());
           
           if (existingIndex >= 0) {
             newProjectsList[existingIndex] = { ...newProjectsList[existingIndex], ...newProj };
@@ -474,15 +524,22 @@ export default function App() {
           }
 
           if (db) {
-            await setDoc(getDocRef('project_tracking', newProj.id), newProj);
+            // Kita kumpulkan ke promise agar mempercepat upload ke cloud tanpa membuat aplikasi freeze
+            firestorePromises.push(setDoc(getDocRef('project_tracking', newProj.id), newProj));
           }
           importedCount++;
         }
 
+        // Tembak sekaligus ke Firestore
+        if (firestorePromises.length > 0) {
+          await Promise.all(firestorePromises);
+        }
+
         setProjects(newProjectsList);
-        alert(`Berhasil mengimpor/memperbarui ${importedCount} project dari file!`);
+        alert(`Berhasil! ${importedCount} project sukses diimpor dan dipetakan secara otomatis ke dalam database.`);
       } catch (error) {
-        alert("Terjadi kesalahan saat membaca file. Pastikan ekstensi .csv (Comma Separated Values).");
+        console.error(error);
+        alert("Terjadi kesalahan saat membaca file. Pastikan ekstensi .csv (Comma Separated Values) tanpa format aneh.");
       }
       e.target.value = null; 
     };
@@ -492,7 +549,6 @@ export default function App() {
 
   // --- RENDERERS ---
 
-  // Fungsi Render Detail Modal (Fungsi yang sebelumnya terhapus)
   const renderDetailModal = () => {
     if (!selectedPseDetailId) return null;
     const emp = evaluations.find(e => e.id === selectedPseDetailId);
