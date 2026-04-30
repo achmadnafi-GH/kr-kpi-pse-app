@@ -19,11 +19,13 @@ import {
   Users, BarChart3, FileEdit, Save, AlertCircle, TrendingUp, Award, 
   Activity, PieChart, ShieldCheck, UserCircle, Crown, X, 
   FileText, Search, LogOut, Briefcase, Plus, ListTodo, RefreshCw, Trash2, 
-  Download, Upload, Lock, Settings, UserCog, ShieldAlert, Send, Printer, CheckCircle2
+  Download, Upload, Lock, Settings, UserCog, Send, Printer, CheckCircle2, ChevronLeft, ShieldAlert
 } from 'lucide-react';
 
 // --- INIT FIREBASE ---
 let app, auth, db;
+// Deteksi apakah sedang di mode Canvas/Preview atau Localhost
+const isPreviewEnvironment = typeof __firebase_config !== 'undefined' || typeof __app_id !== 'undefined' || window.location.hostname === 'localhost';
 
 try {
   if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_API_KEY) {
@@ -152,7 +154,9 @@ export default function App() {
   const showConfirm = (msg, onConfirmFn) => setDialog({ type: 'confirm', message: msg, onConfirm: onConfirmFn });
 
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
-  const [activeUser, setActiveUser] = useState(null);
+  const [realUser, setRealUser] = useState(null);
+  const [mockUser, setMockUser] = useState(null); // State khusus untuk bypass preview
+  const activeUser = mockUser || realUser; // Jika mockUser terisi, gunakan itu.
 
   const [managedRoles, setManagedRoles] = useState([]); 
   const [userRole, setUserRole] = useState('guest'); 
@@ -160,6 +164,8 @@ export default function App() {
   const [activeRoleConfig, setActiveRoleConfig] = useState(ROLE_CONFIG.staff); 
   const [userProfiles, setUserProfiles] = useState({}); 
 
+  // State Form Penilaian
+  const [evaluatingPse, setEvaluatingPse] = useState(null); 
   const [isRevisionMode, setIsRevisionMode] = useState(false);
   const [formData, setFormData] = useState({ name: '', metrics: {} });
 
@@ -179,7 +185,7 @@ export default function App() {
     };
     initAuth();
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setActiveUser(currentUser);
+      setRealUser(currentUser);
       setIsLoadingAuth(false); 
     });
     return () => unsubscribe();
@@ -245,12 +251,25 @@ export default function App() {
     try { await signInWithPopup(auth, new GoogleAuthProvider()); } catch (error) { showMessage("Login Gagal: " + error.message); }
   };
 
-  const handleLogout = () => { if (auth) auth.signOut(); };
+  const handleBypassPreviewLogin = () => {
+    // Inject Mock User khusus untuk keperluan Preview di Canvas
+    setMockUser({
+      uid: 'preview-admin',
+      email: 'nafi@kayreach.com',
+      displayName: 'Nafi (Preview Admin)',
+      photoURL: '',
+      isAnonymous: false
+    });
+  };
+
+  const handleLogout = () => { 
+    setMockUser(null);
+    if (auth) auth.signOut(); 
+  };
 
   // OTOMATIS KALKULASI NILAI KUANTITATIF SAAT FORM DIBUKA/NAMA DIGANTI
   useEffect(() => {
-    setIsRevisionMode(false);
-    if (formData.name) {
+    if (formData.name && evaluatingPse) {
       const existing = evaluations.find(e => e.name === formData.name);
       let initialMetrics = existing && existing.rawMetrics ? JSON.parse(JSON.stringify(existing.rawMetrics)) : {};
 
@@ -277,8 +296,7 @@ export default function App() {
       setFormData(prev => ({ ...prev, metrics: initialMetrics }));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData.name]); // Hanya triger ulang jika nama berganti untuk mencegah pengetikan field lain kereset
-
+  }, [formData.name, evaluatingPse, projects]); 
 
   const getScoreInfo = (finalScore) => {
     if (finalScore >= 9) return SCORING_RULES[0];
@@ -383,6 +401,16 @@ export default function App() {
     });
   };
 
+  const handleSelectAllProjects = (e, currentDisplayData) => {
+    if (e.target.checked) setSelectedProjects(currentDisplayData.map(p => p.id));
+    else setSelectedProjects([]);
+  };
+
+  const handleSelectProject = (id) => {
+    if (selectedProjects.includes(id)) setSelectedProjects(selectedProjects.filter(pid => pid !== id));
+    else setSelectedProjects([...selectedProjects, id]);
+  };
+
   const handleInlineProjectUpdate = async (id, field, value) => {
     let updatedItemObj = null;
     setProjects(prev => prev.map(p => {
@@ -445,20 +473,27 @@ export default function App() {
 
     if (isMissingMandatoryOther) { showMessage("Terdapat skor yang WAJIB Anda isi (1-10)."); return; }
     
+    // Cari id lama jika ini proses revisi
+    const existingEval = evaluations.find(e => e.name === formData.name);
+    const evalId = existingEval ? existingEval.id : `eval_${Date.now()}`;
+
     const stats = calculateStatsForForm(formData.metrics, activeRoleConfig);
     const scoreInfo = getScoreInfo(stats.finalScore);
     const newEvalData = {
-       id: `eval_${Date.now()}`, name: formData.name, scores: stats.averages, finalScore: stats.finalScore, status: scoreInfo.label,
-       rawMetrics: formData.metrics, submittedRoles: [activeRoleConfig.id] 
+       id: evalId, 
+       name: formData.name, 
+       scores: stats.averages, 
+       finalScore: stats.finalScore, 
+       status: scoreInfo.label,
+       rawMetrics: formData.metrics, 
+       submittedRoles: existingEval ? [...new Set([...(existingEval.submittedRoles || []), activeRoleConfig.id])] : [activeRoleConfig.id]
     };
 
     setEvaluations(prev => {
        const idx = prev.findIndex(e => e.name === formData.name);
        if (idx >= 0) {
           const updated = [...prev];
-          newEvalData.id = updated[idx].id;
-          newEvalData.submittedRoles = [...new Set([...(updated[idx].submittedRoles || []), activeRoleConfig.id])];
-          updated[idx] = { ...updated[idx], ...newEvalData };
+          updated[idx] = newEvalData;
           return updated;
        }
        return [newEvalData, ...prev];
@@ -466,11 +501,11 @@ export default function App() {
 
     showMessage("Nilai KPI Berhasil Disimpan!");
     setFormData({ name: '', metrics: {} });
-    setActiveTab('dashboard'); 
+    setEvaluatingPse(null); 
 
     if (db) {
-      try { await setDoc(getDocRef('kpi_evaluations', newEvalData.id), newEvalData); } 
-      catch(e) { showMessage("Gagal menyimpan KPI: " + e.message); }
+      try { await setDoc(getDocRef('kpi_evaluations', evalId), newEvalData); } 
+      catch(e) { showMessage("Gagal menyimpan KPI ke database: " + e.message); }
     }
   };
 
@@ -699,7 +734,7 @@ export default function App() {
                           <div className="flex justify-between items-start">
                             <p className="font-semibold text-gray-700 text-sm">{item.label}</p>
                             <span className="text-sm font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 print:border-none print:bg-transparent">
-                              Skor: {finalSkor || '-'} / 10
+                              Skor: {finalSkor ? Number(finalSkor).toFixed(2) : '-'} / 10
                             </span>
                           </div>
                           {isAuto && data.realisasi !== undefined && (
@@ -839,6 +874,13 @@ export default function App() {
                           <td className="px-6 py-3 text-center">
                             <span className={`px-3 py-1 rounded text-xs font-bold shadow-sm uppercase ${roleStyle}`}>{item.role === 'manager_other' ? 'Manager Div. Lain' : item.role === 'manager_pse' ? 'Manager PSE' : item.role}</span>
                           </td>
+                          <td className="px-6 py-3 text-center text-xs">
+                            {item.isCustom ? (
+                              <span className="text-orange-600 font-bold flex items-center justify-center"><FileEdit size={12} className="mr-1"/> Override DB</span>
+                            ) : (
+                              <span className="text-gray-400 font-semibold">System Default</span>
+                            )}
+                          </td>
                           <td className="px-6 py-3 text-center">
                             {item.isCustom && item.email !== 'nafi@kayreach.com' && (
                               <button onClick={() => handleDeleteUserRole(item.email)} className="p-1.5 text-red-500 hover:bg-red-100 rounded transition" title="Kembalikan ke Default / Hapus Override">
@@ -919,6 +961,7 @@ export default function App() {
             )}
           </div>
 
+          {/* FILTER BAR DIATAS TABEL */}
           <div className="bg-slate-50 border-y border-gray-200 px-6 py-3 flex flex-wrap items-center gap-3">
             <div className="flex items-center bg-white border border-gray-300 rounded-lg px-3 py-2 shadow-sm flex-1 min-w-[200px] max-w-sm">
               <Search size={16} className="text-gray-400 mr-2"/>
@@ -1379,9 +1422,6 @@ export default function App() {
                 <button onClick={handleExportKPI} className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center shadow-sm">
                   <Download size={16} className="mr-2" /> Export Rekap KPI (.csv)
                 </button>
-                <button onClick={() => setActiveTab('form')} className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center shadow-sm">
-                  <FileEdit size={16} className="mr-2" /> Isi Nilai Baru
-                </button>
               </div>
             )}
           </div>
@@ -1426,7 +1466,6 @@ export default function App() {
             </table>
           </div>
         </div>
-        {renderDetailModal()}
       </div>
     );
   };
@@ -1438,6 +1477,58 @@ export default function App() {
           <Lock size={64} className="text-gray-300 mb-4" />
           <h2 className="text-2xl font-bold text-gray-700">Akses Terbatas</h2>
           <p className="text-gray-500 mt-2">Hanya Admin dan Manager yang berhak mengisi form evaluasi 360°.</p>
+        </div>
+      );
+    }
+
+    if (!evaluatingPse) {
+      return (
+        <div className="space-y-6 animate-in fade-in">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-6 py-5 border-b border-gray-200 bg-slate-50">
+              <h3 className="text-lg font-bold text-gray-800">Daftar Penilaian Staff / PSE</h3>
+              <p className="text-xs text-gray-500 mt-1">Pilih staff untuk memberikan atau merevisi penilaian KPI mereka.</p>
+            </div>
+            <div className="divide-y divide-gray-100">
+              {PSE_NAMES.map(pse => {
+                const empEval = evaluations.find(e => e.name === pse);
+                const hasSubmitted = empEval?.submittedRoles?.includes(activeRoleConfig.id);
+                const isCompleted = empEval !== undefined;
+
+                return (
+                  <div key={pse} className="p-4 px-6 flex flex-col md:flex-row md:items-center justify-between hover:bg-blue-50/50 transition-colors gap-4">
+                    <div>
+                      <h4 className="font-bold text-gray-800 text-base">{pse}</h4>
+                      {isCompleted ? (
+                        <p className="text-xs font-semibold text-emerald-600 mt-0.5 flex items-center">
+                          <CheckCircle2 size={12} className="mr-1" />
+                          Skor Saat Ini: {Number(empEval.finalScore).toFixed(2)} ({empEval.status})
+                        </p>
+                      ) : (
+                        <p className="text-xs text-gray-400 mt-0.5 italic">Belum ada penilaian terdaftar.</p>
+                      )}
+                    </div>
+                    <div>
+                      <button 
+                        onClick={() => {
+                          setFormData({ name: pse, metrics: empEval?.rawMetrics ? JSON.parse(JSON.stringify(empEval.rawMetrics)) : {} });
+                          setEvaluatingPse(pse);
+                          setIsRevisionMode(hasSubmitted);
+                        }}
+                        className={`w-full md:w-auto px-5 py-2.5 rounded-lg text-sm font-bold transition-all shadow-sm ${
+                          hasSubmitted 
+                            ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200 border border-yellow-200' 
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                      >
+                        {hasSubmitted ? 'Revisi Nilai' : 'Beri Penilaian'}
+                      </button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
         </div>
       );
     }
@@ -1456,15 +1547,17 @@ export default function App() {
           <div className={`flex items-center px-4 py-3 rounded-lg ${activeRoleConfig.color}`}>
             <ActiveIcon size={20} className="mr-3" />
             <div>
-              <p className="text-[10px] uppercase font-bold tracking-widest mb-0.5 opacity-80">Hak Akses Sistem:</p>
+              <p className="text-[10px] uppercase font-bold tracking-widest mb-0.5 opacity-80">Menilai Sebagai:</p>
               <p className="font-black text-sm">{activeRoleConfig.label}</p>
             </div>
           </div>
           <div className="flex gap-3 w-full md:w-auto">
-             <button onClick={() => setActiveTab('dashboard')} className="px-5 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg text-sm font-semibold transition-colors">Batal</button>
+             <button onClick={() => { setEvaluatingPse(null); setFormData({ name: '', metrics: {} }); }} className="px-5 py-2.5 bg-gray-200 hover:bg-gray-300 text-gray-800 rounded-lg text-sm font-semibold transition-colors flex items-center">
+               <ChevronLeft size={16} className="mr-1" /> Kembali
+             </button>
              {isLocked ? (
                <button onClick={() => setIsRevisionMode(true)} className="flex-1 md:flex-none flex justify-center items-center px-6 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg text-sm font-semibold shadow-md transition-colors">
-                 <FileEdit size={16} className="mr-2" /> Revisi Nilai
+                 <FileEdit size={16} className="mr-2" /> Buka Kunci (Revisi)
                </button>
              ) : (
                <button onClick={handleSimpanFormClick} className="flex-1 md:flex-none flex justify-center items-center px-6 py-2.5 bg-gray-900 hover:bg-black text-white rounded-lg text-sm font-semibold shadow-md transition-colors">
@@ -1476,140 +1569,129 @@ export default function App() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
-            <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-              <h3 className="text-md font-bold text-gray-800 mb-4 border-b pb-3">Pilih Karyawan yang Dinilai</h3>
-              <div className="grid grid-cols-1 gap-5">
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">Nama Lengkap PSE <span className="text-red-500">*</span></label>
-                  <select value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-gray-50 font-medium cursor-pointer">
-                    <option value="" disabled>-- Pilih Karyawan --</option>
-                    {PSE_NAMES.map(name => <option key={name} value={name}>{name}</option>)}
-                  </select>
-                </div>
+            <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center font-black text-2xl border border-blue-200">
+                {String(formData.name).charAt(0)}
+              </div>
+              <div className="flex-1">
+                <p className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Karyawan yang dinilai</p>
+                <h3 className="text-xl font-black text-gray-800">{formData.name}</h3>
               </div>
             </div>
 
-            {!formData.name ? (
-              <div className="bg-slate-50 border-2 border-dashed border-gray-300 rounded-2xl p-12 text-center text-gray-500 font-medium">
-                Pilih karyawan di atas untuk mulai mengisi form penilaian.
-              </div>
-            ) : (
-              Object.entries(METRICS_CONFIG).map(([catId, category]) => {
-                if (category.type === 'auto' && !activeRoleConfig.canRateQuant) return null;
+            {Object.entries(METRICS_CONFIG).map(([catId, category]) => {
+              if (category.type === 'auto' && !activeRoleConfig.canRateQuant) return null;
 
-                return (
-                  <div key={catId} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm animate-in fade-in duration-300">
-                    <div className="flex justify-between items-end border-b pb-3 mb-5">
-                      <div>
-                        <h3 className="text-lg font-extrabold text-gray-800">{category.title}</h3>
-                        <p className="text-xs text-gray-500 mt-1">{category.desc}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="space-y-6">
-                      {category.items.map(item => {
-                        const itemData = formData.metrics[catId]?.[item.id] || {};
-                        const myScoreKey = activeRoleConfig.scoreKey;
-                        const isAutoScore = category.type === 'auto';
-
-                        return (
-                          <div key={item.id} className="p-5 bg-gray-50 rounded-xl border border-gray-200 flex flex-col gap-4 transition hover:border-gray-300">
-                            <div className="flex justify-between items-start">
-                              <div>
-                                <p className="font-bold text-gray-800">{item.label}</p>
-                              </div>
-                              <div className="text-right hidden lg:block">
-                                <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full font-black text-sm border-2 ${itemData.skor > 0 ? 'border-blue-200 text-blue-700 bg-white' : 'border-gray-200 text-gray-400 bg-white'}`}>
-                                  {itemData.skor || '-'}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mt-2">
-                              {isAutoScore ? (
-                                <>
-                                  <div className="md:col-span-12 lg:col-span-6">
-                                    <label className="block text-xs font-bold text-gray-700 mb-1.5 flex justify-between items-center">
-                                      <span>Aktual Realisasi <span className="text-emerald-500 ml-1">(Otomatis Terisi)</span></span>
-                                      {itemData.realisasi > 0 && (
-                                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 shadow-sm animate-in zoom-in">
-                                          + {(((Math.min((Number(itemData.realisasi) / item.target) * 10, 10)) / category.items.length) * category.weight).toFixed(2)} pts
-                                        </span>
-                                      )}
-                                    </label>
-                                    <input 
-                                      type="number" 
-                                      disabled 
-                                      value={itemData.realisasi || '0'} 
-                                      className="w-full bg-gray-200 border border-gray-300 text-gray-500 rounded-lg px-3 py-2.5 text-sm font-bold cursor-not-allowed" 
-                                    />
-                                    <p className="text-[10px] text-gray-400 mt-1.5 italic">*Diambil otomatis dari sistem Project Monitoring</p>
-                                  </div>
-                                </>
-                              ) : (
-                                <>
-                                  <div className="md:col-span-12">
-                                    <label className="block text-xs font-bold text-gray-700 mb-2 flex justify-between items-center">
-                                      <span>Pilih Skor Anda (1 - 10) {activeRoleConfig.isOtherRequired ? <span className="text-red-500 ml-1">*Wajib</span> : <span className="text-gray-400 font-normal ml-1">Opsional</span>}</span>
-                                      {itemData[myScoreKey] > 0 && (
-                                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 shadow-sm animate-in zoom-in">
-                                          + {((Number(itemData[myScoreKey]) / category.items.length) * category.weight).toFixed(2)} pts
-                                        </span>
-                                      )}
-                                    </label>
-                                    <div className="flex flex-wrap gap-1.5">
-                                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
-                                        <button
-                                          key={n}
-                                          disabled={isLocked}
-                                          onClick={() => {
-                                            const newData = {...formData};
-                                            if(!newData.metrics[catId]) newData.metrics[catId] = {};
-                                            if(!newData.metrics[catId][item.id]) newData.metrics[catId][item.id] = {};
-                                            newData.metrics[catId][item.id][myScoreKey] = n;
-                                            setFormData(newData);
-                                          }}
-                                          className={`w-9 h-9 md:w-10 md:h-10 rounded-lg font-black text-sm md:text-base transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center ${
-                                            Number(itemData[myScoreKey]) === n 
-                                              ? 'bg-blue-600 text-white shadow-md scale-105 ring-2 ring-blue-300 ring-offset-1' 
-                                              : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-100 hover:text-gray-800'
-                                          }`}
-                                        >
-                                          {n}
-                                        </button>
-                                      ))}
-                                    </div>
-                                  </div>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
+              return (
+                <div key={catId} className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm animate-in fade-in duration-300">
+                  <div className="flex justify-between items-end border-b pb-3 mb-5">
+                    <div>
+                      <h3 className="text-lg font-extrabold text-gray-800">{category.title}</h3>
+                      <p className="text-xs text-gray-500 mt-1">{category.desc}</p>
                     </div>
                   </div>
-                );
-              })
-            )}
+                  
+                  <div className="space-y-6">
+                    {category.items.map(item => {
+                      const itemData = formData.metrics[catId]?.[item.id] || {};
+                      const myScoreKey = activeRoleConfig.scoreKey;
+                      const isAutoScore = category.type === 'auto';
+
+                      return (
+                        <div key={item.id} className="p-5 bg-gray-50 rounded-xl border border-gray-200 flex flex-col gap-4 transition hover:border-gray-300">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="font-bold text-gray-800">{item.label}</p>
+                            </div>
+                            <div className="text-right hidden lg:block">
+                              <span className={`inline-flex items-center justify-center w-10 h-10 rounded-full font-black text-sm border-2 ${itemData.skor > 0 || itemData.realisasi > 0 ? 'border-blue-200 text-blue-700 bg-white' : 'border-gray-200 text-gray-400 bg-white'}`}>
+                                {isAutoScore && itemData.realisasi ? Math.min((Number(itemData.realisasi) / item.target) * 10, 10).toFixed(1) : (itemData[myScoreKey] || '-')}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-12 gap-5 mt-2">
+                            {isAutoScore ? (
+                              <>
+                                <div className="md:col-span-12 lg:col-span-6">
+                                  <label className="block text-xs font-bold text-gray-700 mb-1.5 flex justify-between items-center">
+                                    <span>Aktual Realisasi <span className="text-emerald-500 ml-1">(Otomatis Terisi)</span></span>
+                                    {itemData.realisasi > 0 && (
+                                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 shadow-sm animate-in zoom-in">
+                                        + {(((Math.min((Number(itemData.realisasi) / item.target) * 10, 10)) / category.items.length) * category.weight).toFixed(2)} pts
+                                      </span>
+                                    )}
+                                  </label>
+                                  <input 
+                                    type="number" 
+                                    disabled 
+                                    value={itemData.realisasi || '0'} 
+                                    className="w-full bg-gray-200 border border-gray-300 text-gray-500 rounded-lg px-3 py-2.5 text-sm font-bold cursor-not-allowed" 
+                                  />
+                                  <p className="text-[10px] text-gray-400 mt-1.5 italic">*Diambil otomatis dari sistem Project Monitoring</p>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div className="md:col-span-12">
+                                  <label className="block text-xs font-bold text-gray-700 mb-2 flex justify-between items-center">
+                                    <span>Pilih Skor (1 Sangat Buruk - 10 Sangat Baik) {activeRoleConfig.isOtherRequired ? <span className="text-red-500 ml-1">*Wajib</span> : <span className="text-gray-400 font-normal ml-1">Opsional</span>}</span>
+                                    {itemData[myScoreKey] > 0 && (
+                                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-100 shadow-sm animate-in zoom-in">
+                                        + {((Number(itemData[myScoreKey]) / category.items.length) * category.weight).toFixed(2)} pts
+                                      </span>
+                                    )}
+                                  </label>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                                      <button
+                                        key={n}
+                                        disabled={isLocked}
+                                        onClick={() => {
+                                          const newData = {...formData};
+                                          if(!newData.metrics[catId]) newData.metrics[catId] = {};
+                                          if(!newData.metrics[catId][item.id]) newData.metrics[catId][item.id] = {};
+                                          newData.metrics[catId][item.id][myScoreKey] = n;
+                                          setFormData(newData);
+                                        }}
+                                        className={`w-9 h-9 md:w-10 md:h-10 rounded-lg font-black text-sm md:text-base transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center ${
+                                          Number(itemData[myScoreKey]) === n 
+                                            ? 'bg-blue-600 text-white shadow-md scale-105 ring-2 ring-blue-300 ring-offset-1' 
+                                            : 'bg-white text-gray-500 border border-gray-200 hover:bg-gray-100 hover:text-gray-800'
+                                        }`}
+                                      >
+                                        {n}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
           </div>
           
           <div className="lg:col-span-1 block w-full mt-4 lg:mt-0">
-            {formData.name && (
-              <div className="bg-slate-800 rounded-2xl p-6 shadow-xl sticky top-24 text-white border border-slate-700 animate-in slide-in-from-bottom-4 lg:slide-in-from-right-4">
-                <h3 className="text-lg font-bold mb-6 flex items-center border-b border-slate-700 pb-4">
-                  <BarChart3 className="mr-3 text-blue-400" /> Live Preview
-                </h3>
-                <div className="bg-slate-950 rounded-xl p-6 border border-slate-700 text-center shadow-inner">
-                  <p className="text-slate-400 text-xs uppercase tracking-widest font-bold mb-3">Estimasi Skor Akhir</p>
-                  <p className="text-6xl font-black text-white mb-4 drop-shadow-md">
-                    {liveStats.finalScore > 0 ? Number(liveStats.finalScore || 0).toFixed(2) : '0.00'}
-                  </p>
-                  <div className={`inline-block px-4 py-1.5 rounded-lg text-sm font-bold shadow-sm ${liveScoreInfo.color.replace('bg-', 'bg-opacity-20 bg-')}`}>
-                    {liveStats.finalScore > 0 ? liveScoreInfo.label : 'Belum Ada Nilai'}
-                  </div>
+            <div className="bg-slate-800 rounded-2xl p-6 shadow-xl sticky top-24 text-white border border-slate-700 animate-in slide-in-from-bottom-4 lg:slide-in-from-right-4">
+              <h3 className="text-lg font-bold mb-6 flex items-center border-b border-slate-700 pb-4">
+                <BarChart3 className="mr-3 text-blue-400" /> Live Preview
+              </h3>
+              <div className="bg-slate-950 rounded-xl p-6 border border-slate-700 text-center shadow-inner">
+                <p className="text-slate-400 text-xs uppercase tracking-widest font-bold mb-3">Estimasi Skor Akhir</p>
+                <p className="text-6xl font-black text-white mb-4 drop-shadow-md">
+                  {liveStats.finalScore > 0 ? Number(liveStats.finalScore || 0).toFixed(2) : '0.00'}
+                </p>
+                <div className={`inline-block px-4 py-1.5 rounded-lg text-sm font-bold shadow-sm ${liveScoreInfo.color.replace('bg-', 'bg-opacity-20 bg-')}`}>
+                  {liveStats.finalScore > 0 ? liveScoreInfo.label : 'Belum Ada Nilai'}
                 </div>
               </div>
-            )}
+            </div>
           </div>
         </div>
       </div>
@@ -1657,6 +1739,20 @@ export default function App() {
               Sign In dengan Google
             </button>
           </div>
+          
+          {/* TOMBOL BYPASS UNTUK TESTING DI CANVAS */}
+          {isPreviewEnvironment && (
+            <div className="px-8 pb-4">
+              <button 
+                onClick={handleBypassPreviewLogin} 
+                className="w-full flex items-center justify-center px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold transition-colors"
+              >
+                <ShieldCheck size={14} className="mr-2" /> Masuk Mode Preview (Admin)
+              </button>
+              <p className="text-[9px] text-gray-400 text-center mt-2 italic">Tombol ini hanya muncul di lingkungan pengembangan (Canvas) untuk menguji fitur tanpa login asli.</p>
+            </div>
+          )}
+
           <div className="bg-gray-50 p-4 text-center border-t border-gray-100">
             <p className="text-xs text-gray-400 font-medium flex items-center justify-center">
               <Lock size={12} className="mr-1.5"/> Akses dibatasi hanya untuk internal.
@@ -1691,10 +1787,10 @@ export default function App() {
           
           <div className="flex flex-col md:flex-row items-center gap-6">
             <div className="flex bg-gray-100 p-1.5 rounded-xl shadow-inner border border-gray-200 overflow-x-auto max-w-full">
-              <button onClick={() => setActiveTab('dashboard')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center whitespace-nowrap ${activeTab === 'dashboard' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-900'}`}>
+              <button onClick={() => { setActiveTab('dashboard'); setEvaluatingPse(null); }} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center whitespace-nowrap ${activeTab === 'dashboard' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-900'}`}>
                 <Activity size={16} className="mr-2" /> KPI Dashboard
               </button>
-              <button onClick={() => setActiveTab('projects')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center whitespace-nowrap ${activeTab === 'projects' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-900'}`}>
+              <button onClick={() => { setActiveTab('projects'); setEvaluatingPse(null); }} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center whitespace-nowrap ${activeTab === 'projects' ? 'bg-white shadow text-blue-700' : 'text-gray-500 hover:text-gray-900'}`}>
                 <ListTodo size={16} className="mr-2" /> Project Tracker
               </button>
               
@@ -1705,7 +1801,7 @@ export default function App() {
               )}
 
               {userRole === 'admin' && (
-                <button onClick={() => setActiveTab('admin')} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center ${activeTab === 'admin' ? 'bg-slate-900 shadow text-white' : 'text-purple-600 hover:text-purple-800'}`}>
+                <button onClick={() => { setActiveTab('admin'); setEvaluatingPse(null); }} className={`px-4 py-2 rounded-lg text-sm font-bold transition-all duration-200 flex items-center ${activeTab === 'admin' ? 'bg-slate-900 shadow text-white' : 'text-purple-600 hover:text-purple-800'}`}>
                   <Settings size={16} className="mr-2" /> Admin Panel
                 </button>
               )}
@@ -1725,7 +1821,7 @@ export default function App() {
                 </button>
               </div>
 
-              {userRole === 'staff' && !EMAIL_TO_PSE_MAP[activeUser?.email?.toLowerCase() || ''] && (
+              {activeUser && userRole === 'staff' && !EMAIL_TO_PSE_MAP[activeUser?.email?.toLowerCase() || ''] && (
                 <div className="flex flex-col border-l border-gray-300 pl-4 hidden md:flex animate-in zoom-in">
                   <span className="text-[10px] text-red-500 font-bold uppercase tracking-wider">Identitas Anda:</span>
                   <select value={staffIdentity} onChange={(e) => setStaffIdentity(e.target.value)} className="bg-red-50 border border-red-200 rounded px-1 text-xs font-black text-red-700 cursor-pointer outline-none">
@@ -1745,6 +1841,8 @@ export default function App() {
            activeTab === 'projects' ? renderProjectTracking() : 
            activeTab === 'admin' ? renderAdminPanel() : renderForm()}
         </div>
+        {/* Render Modal diluar wrapper print:hidden agar selalu tampil dan rapi saat diprint */}
+        {renderDetailModal()}
       </main>
     </div>
   );
