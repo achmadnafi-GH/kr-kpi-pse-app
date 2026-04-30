@@ -19,12 +19,11 @@ import {
   Users, BarChart3, FileEdit, Save, AlertCircle, TrendingUp, Award, 
   Activity, PieChart, ShieldCheck, UserCircle, Crown, X, 
   FileText, Search, LogOut, Briefcase, Plus, ListTodo, RefreshCw, Trash2, 
-  Download, Upload, Lock, Settings, UserCog, Send, Printer, CheckCircle2, ChevronLeft, ShieldAlert
+  Download, Upload, Lock, Settings, UserCog, Send, Printer, CheckCircle2, ChevronLeft
 } from 'lucide-react';
 
 // --- INIT FIREBASE ---
 let app, auth, db;
-// Deteksi apakah sedang di mode Canvas/Preview atau Localhost
 const isPreviewEnvironment = typeof __firebase_config !== 'undefined' || typeof __app_id !== 'undefined' || window.location.hostname === 'localhost';
 
 try {
@@ -143,6 +142,50 @@ const ROLE_CONFIG = {
   staff: { id: 'staff', label: 'Staff / PSE', icon: UserCircle, color: 'text-emerald-600 bg-emerald-50 border-emerald-200', scoreKey: 'skorPeer', canRateQuant: false, isQuantRequired: false, isOtherRequired: false }
 };
 
+// --- KOMPONEN SPIDER CHART (RADAR) ---
+const SpiderChart = ({ scores }) => {
+  const cx = 100, cy = 100, r = 75;
+  const getPoint = (score, angle) => {
+    const rad = angle * Math.PI / 180;
+    const dist = ((score || 0) / 10) * r;
+    return `${cx + dist * Math.cos(rad)},${cy + dist * Math.sin(rad)}`;
+  };
+
+  // Sudut: Kuantitatif (Atas: -90), Kualitatif (Kanan: 0), Pengembangan (Bawah: 90), Kultur (Kiri: 180)
+  const pts = `${getPoint(scores?.kuantitatif, -90)} ${getPoint(scores?.kualitatif, 0)} ${getPoint(scores?.pengembangan, 90)} ${getPoint(scores?.kultur, 180)}`;
+
+  return (
+    <div className="w-full max-w-[300px] mx-auto flex items-center justify-center p-2">
+      <svg viewBox="0 0 200 200" className="w-full h-full overflow-visible">
+        {/* Background Grid */}
+        <polygon points={`${cx},${cy-r} ${cx+r},${cy} ${cx},${cy+r} ${cx-r},${cy}`} fill="none" stroke="#e5e7eb" strokeWidth="1.5"/>
+        <polygon points={`${cx},${cy-r*0.75} ${cx+r*0.75},${cy} ${cx},${cy+r*0.75} ${cx-r*0.75},${cy}`} fill="none" stroke="#e5e7eb" strokeWidth="1"/>
+        <polygon points={`${cx},${cy-r*0.5} ${cx+r*0.5},${cy} ${cx},${cy+r*0.5} ${cx-r*0.5},${cy}`} fill="none" stroke="#e5e7eb" strokeWidth="1"/>
+        <polygon points={`${cx},${cy-r*0.25} ${cx+r*0.25},${cy} ${cx},${cy+r*0.25} ${cx-r*0.25},${cy}`} fill="none" stroke="#e5e7eb" strokeWidth="1"/>
+        {/* Axes lines */}
+        <line x1={cx} y1={cy-r} x2={cx} y2={cy+r} stroke="#e5e7eb" strokeWidth="1.5"/>
+        <line x1={cx-r} y1={cy} x2={cx+r} y2={cy} stroke="#e5e7eb" strokeWidth="1.5"/>
+        
+        {/* Data Shape */}
+        <polygon points={pts} fill="rgba(59, 130, 246, 0.4)" stroke="#2563eb" strokeWidth="2.5" className="transition-all duration-1000 ease-out drop-shadow-md"/>
+        
+        {/* Points Dots */}
+        <circle cx={getPoint(scores?.kuantitatif, -90).split(',')[0]} cy={getPoint(scores?.kuantitatif, -90).split(',')[1]} r="4" fill="#1e40af" />
+        <circle cx={getPoint(scores?.kualitatif, 0).split(',')[0]} cy={getPoint(scores?.kualitatif, 0).split(',')[1]} r="4" fill="#1e40af" />
+        <circle cx={getPoint(scores?.pengembangan, 90).split(',')[0]} cy={getPoint(scores?.pengembangan, 90).split(',')[1]} r="4" fill="#1e40af" />
+        <circle cx={getPoint(scores?.kultur, 180).split(',')[0]} cy={getPoint(scores?.kultur, 180).split(',')[1]} r="4" fill="#1e40af" />
+
+        {/* Labels */}
+        <text x={cx} y={cy-r-12} textAnchor="middle" fontSize="10" className="font-bold fill-gray-700">Kuantitatif</text>
+        <text x={cx+r+10} y={cy+4} textAnchor="start" fontSize="10" className="font-bold fill-gray-700">Kualitatif</text>
+        <text x={cx} y={cy+r+20} textAnchor="middle" fontSize="10" className="font-bold fill-gray-700">Pengembangan</text>
+        <text x={cx-r-10} y={cy+4} textAnchor="end" fontSize="10" className="font-bold fill-gray-700">Kultur</text>
+      </svg>
+    </div>
+  );
+};
+
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard'); 
   const [evaluations, setEvaluations] = useState([]);
@@ -155,8 +198,8 @@ export default function App() {
 
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [realUser, setRealUser] = useState(null);
-  const [mockUser, setMockUser] = useState(null); // State khusus untuk bypass preview
-  const activeUser = mockUser || realUser; // Jika mockUser terisi, gunakan itu.
+  const [mockUser, setMockUser] = useState(null); 
+  const activeUser = mockUser || realUser; 
 
   const [managedRoles, setManagedRoles] = useState([]); 
   const [userRole, setUserRole] = useState('guest'); 
@@ -164,7 +207,6 @@ export default function App() {
   const [activeRoleConfig, setActiveRoleConfig] = useState(ROLE_CONFIG.staff); 
   const [userProfiles, setUserProfiles] = useState({}); 
 
-  // State Form Penilaian
   const [evaluatingPse, setEvaluatingPse] = useState(null); 
   const [isRevisionMode, setIsRevisionMode] = useState(false);
   const [formData, setFormData] = useState({ name: '', metrics: {} });
@@ -252,7 +294,6 @@ export default function App() {
   };
 
   const handleBypassPreviewLogin = () => {
-    // Inject Mock User khusus untuk keperluan Preview di Canvas
     setMockUser({
       uid: 'preview-admin',
       email: 'nafi@kayreach.com',
@@ -267,13 +308,11 @@ export default function App() {
     if (auth) auth.signOut(); 
   };
 
-  // OTOMATIS KALKULASI NILAI KUANTITATIF SAAT FORM DIBUKA/NAMA DIGANTI
   useEffect(() => {
     if (formData.name && evaluatingPse) {
       const existing = evaluations.find(e => e.name === formData.name);
       let initialMetrics = existing && existing.rawMetrics ? JSON.parse(JSON.stringify(existing.rawMetrics)) : {};
 
-      // LOGIKA PENILAIAN OTOMATIS DARI PROJECT MONITORING
       const userProjects = projects.filter(p => p.pm === formData.name || p.backup === formData.name);
       const totalProjects = userProjects.length;
       const completedCount = userProjects.filter(p => p.status === 'Completed').length;
@@ -287,7 +326,6 @@ export default function App() {
 
       if (!initialMetrics.kuantitatif) initialMetrics.kuantitatif = {};
       
-      // Inject otomatis nilai realisasi
       initialMetrics.kuantitatif.q1 = { ...initialMetrics.kuantitatif.q1, realisasi: totalProjects };
       initialMetrics.kuantitatif.q2 = { ...initialMetrics.kuantitatif.q2, realisasi: winRate.toFixed(1) };
       initialMetrics.kuantitatif.q3 = { ...initialMetrics.kuantitatif.q3, realisasi: proposalCount };
@@ -336,7 +374,6 @@ export default function App() {
     return { averages, finalScore };
   };
 
-  // HANDLERS PROJECT
   const handleAddNoteToProject = async (projectId) => {
     const draftText = newNotesMap[projectId];
     if (!draftText || !draftText.trim()) return;
@@ -426,7 +463,6 @@ export default function App() {
     }
   };
 
-  // HANDLERS ADMIN ROLE
   const handleSaveUserRole = async (e) => {
     e.preventDefault();
     if (userRole !== 'admin') return;
@@ -460,7 +496,19 @@ export default function App() {
     });
   };
 
-  // HANDLER FORM KPI
+  const handleDeleteEvaluation = (id, name) => {
+    showConfirm(`Anda yakin ingin mereset/menghapus seluruh data penilaian untuk ${name}?`, async () => {
+      if (userRole === 'admin' && db) {
+        setEvaluations(prev => prev.filter(e => e.id !== id));
+        try { 
+          await deleteDoc(getDocRef('kpi_evaluations', id)); 
+          showMessage(`Data penilaian ${name} berhasil direset.`);
+        } 
+        catch (error) { showMessage("Gagal menghapus penilaian: " + error.message); }
+      }
+    });
+  };
+
   const handleSimpanFormClick = async () => {
     let isMissingMandatoryOther = false;
     if (activeRoleConfig.isOtherRequired) {
@@ -473,7 +521,6 @@ export default function App() {
 
     if (isMissingMandatoryOther) { showMessage("Terdapat skor yang WAJIB Anda isi (1-10)."); return; }
     
-    // Cari id lama jika ini proses revisi
     const existingEval = evaluations.find(e => e.name === formData.name);
     const evalId = existingEval ? existingEval.id : `eval_${Date.now()}`;
 
@@ -509,7 +556,6 @@ export default function App() {
     }
   };
 
-  // EXPORT / IMPORT
   const downloadCSV = (headers, rows, filename) => {
     const csvContent = [headers, ...rows].map(row => row.map(val => `"${String(val || '').replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -682,9 +728,9 @@ export default function App() {
 
     return (
       <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 md:p-6 animate-in fade-in duration-200 print:absolute print:inset-0 print:p-0 print:bg-white print:overflow-visible">
-        <div className="bg-white w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] border border-gray-200 animate-in slide-in-from-bottom-4 print:border-none print:shadow-none print:max-h-none print:overflow-visible">
+        <div className="bg-white w-full max-w-5xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[95vh] border border-gray-200 animate-in slide-in-from-bottom-4 print:border-none print:shadow-none print:max-h-none print:overflow-visible print:w-full print:max-w-full">
           
-          <div className="p-5 md:p-6 border-b border-gray-100 flex justify-between items-start bg-slate-50 relative print:bg-white print:border-b-2 print:border-gray-800">
+          <div className="p-5 md:p-6 border-b border-gray-100 flex justify-between items-start bg-slate-50 relative print:bg-white print:border-b-2 print:border-gray-800 print:color-adjust-exact" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
             <div className="flex items-center gap-4">
               <div className={`w-14 h-14 rounded-full flex items-center justify-center text-white font-bold text-2xl shadow-inner print:border print:border-gray-300 print:text-black print:bg-white ${statusConfig.barColor}`}>
                 {String(emp.name || 'U').charAt(0)}
@@ -714,9 +760,33 @@ export default function App() {
             </button>
           </div>
 
-          <div className="p-5 md:p-6 overflow-y-auto bg-white flex-1 space-y-8 print:overflow-visible">
+          <div className="p-5 md:p-6 overflow-y-auto bg-white flex-1 space-y-8 print:overflow-visible print:p-0 print:pt-6 print:color-adjust-exact" style={{ WebkitPrintColorAdjust: 'exact', printColorAdjust: 'exact' }}>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 print:gap-4">
+            <div className="flex flex-col md:flex-row items-center md:items-start gap-8 border-b border-gray-100 pb-8 print:pb-6 print:border-gray-800 break-inside-avoid">
+              <div className="w-full md:w-1/3 flex items-center justify-center">
+                 <SpiderChart scores={emp.scores} />
+              </div>
+              <div className="w-full md:w-2/3 grid grid-cols-2 gap-4">
+                 <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                    <p className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-1">Skor Kuantitatif</p>
+                    <p className="text-3xl font-black text-blue-900">{Number(emp.scores?.kuantitatif || 0).toFixed(2)} <span className="text-sm font-semibold text-blue-400">/ 10</span></p>
+                 </div>
+                 <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
+                    <p className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest mb-1">Skor Kualitatif</p>
+                    <p className="text-3xl font-black text-emerald-900">{Number(emp.scores?.kualitatif || 0).toFixed(2)} <span className="text-sm font-semibold text-emerald-400">/ 10</span></p>
+                 </div>
+                 <div className="bg-purple-50 p-4 rounded-xl border border-purple-100">
+                    <p className="text-[10px] font-bold text-purple-500 uppercase tracking-widest mb-1">Pengembangan</p>
+                    <p className="text-3xl font-black text-purple-900">{Number(emp.scores?.pengembangan || 0).toFixed(2)} <span className="text-sm font-semibold text-purple-400">/ 10</span></p>
+                 </div>
+                 <div className="bg-orange-50 p-4 rounded-xl border border-orange-100">
+                    <p className="text-[10px] font-bold text-orange-500 uppercase tracking-widest mb-1">Kultur Kerja</p>
+                    <p className="text-3xl font-black text-orange-900">{Number(emp.scores?.kultur || 0).toFixed(2)} <span className="text-sm font-semibold text-orange-400">/ 10</span></p>
+                 </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 print:gap-4 print:mt-6">
               {Object.entries(METRICS_CONFIG).map(([catId, category]) => (
                 <section key={catId} className="break-inside-avoid">
                   <div className="flex items-center gap-2 mb-3 border-b border-gray-200 pb-2">
@@ -733,7 +803,7 @@ export default function App() {
                         <div key={item.id} className="bg-gray-50 rounded-lg p-3 border border-gray-100 print:bg-white print:border-gray-300">
                           <div className="flex justify-between items-start">
                             <p className="font-semibold text-gray-700 text-sm">{item.label}</p>
-                            <span className="text-sm font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 print:border-none print:bg-transparent">
+                            <span className="text-sm font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 print:border-none print:bg-transparent print:text-black">
                               Skor: {finalSkor ? Number(finalSkor).toFixed(2) : '-'} / 10
                             </span>
                           </div>
@@ -758,7 +828,7 @@ export default function App() {
               </div>
               <div className="bg-gray-50 rounded-xl border border-gray-200 p-1 overflow-x-auto print:bg-transparent print:border-none">
                 <table className="w-full text-left text-sm text-gray-600 border-collapse">
-                  <thead className="bg-white text-gray-700 font-bold text-xs uppercase border-b border-gray-200">
+                  <thead className="bg-white text-gray-700 font-bold text-xs uppercase border-b border-gray-200 print:border-b-2 print:border-gray-800">
                     <tr>
                       <th className="px-3 py-2">Nama Client / Project</th>
                       <th className="px-3 py-2">Peran</th>
@@ -766,7 +836,7 @@ export default function App() {
                       <th className="px-3 py-2 text-center">Status</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-gray-100 print:divide-gray-300">
                     {empProjects.length > 0 ? empProjects.map((p, idx) => (
                       <tr key={idx} className="bg-white print:bg-transparent">
                         <td className="px-3 py-2 font-semibold text-gray-800">{p.client}</td>
@@ -902,7 +972,6 @@ export default function App() {
   };
 
   const renderProjectTracking = () => {
-    // FUNGSI SORTING OTOMATIS: Berdasarkan Priority (High duluan), lalu Target End (Paling cepat duluan)
     const displayProjects = visibleProjects.filter(proj => {
       const clientName = proj.client || '';
       const matchSearch = clientName.toLowerCase().includes(searchQuery.toLowerCase());
@@ -912,24 +981,21 @@ export default function App() {
       const matchStatus = projectFilters.status ? proj.status === projectFilters.status : true;
       return matchSearch && matchPriority && matchPM && matchPhase && matchStatus;
     }).sort((a, b) => {
-      // 1. Sort Priority
       const priorityMap = { 'High': 1, 'Medium': 2, 'Low': 3 };
       const pA = priorityMap[a.priority] || 4;
       const pB = priorityMap[b.priority] || 4;
-      
       if (pA !== pB) return pA - pB;
 
-      // 2. Sort Target End Date (Ascending / Lebih Cepat di Atas)
       const dateA = a.endDate ? new Date(a.endDate).getTime() : Infinity;
       const dateB = b.endDate ? new Date(b.endDate).getTime() : Infinity;
       return dateA - dateB;
     });
 
     return (
-      <div className="space-y-6 animate-in fade-in">
+      <div className="space-y-4 animate-in fade-in">
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden relative">
           
-          <div className="px-6 py-5 bg-white flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div className="px-6 py-5 bg-white flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
             <div>
               <h2 className="text-lg font-bold text-gray-800 flex items-center">
                 <Briefcase className="mr-2 text-blue-600" size={20}/> Database Project Monitoring (Ticketing)
@@ -941,43 +1007,42 @@ export default function App() {
             </div>
             
             {canManageProjectFull && (
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
                 {selectedProjects.length > 0 && (
-                   <button onClick={handleBulkDeleteProjects} className="bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center shadow-sm animate-in fade-in zoom-in-95 mr-1" title="Hapus Project Terpilih">
-                     <Trash2 size={16} className="mr-2" /> Hapus Terpilih ({selectedProjects.length})
+                   <button onClick={handleBulkDeleteProjects} className="flex-1 lg:flex-none bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center shadow-sm animate-in fade-in zoom-in-95 mr-1" title="Hapus Project Terpilih">
+                     <Trash2 size={16} className="mr-1.5" /> Hapus ({selectedProjects.length})
                    </button>
                 )}
                 <input type="file" id="excel-import" accept=".csv, .xlsx, .xls" className="hidden" onChange={handleImportProjects}/>
-                <button onClick={() => document.getElementById('excel-import').click()} className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center shadow-sm" title="Upload Excel/CSV">
-                  <Upload size={16} className="mr-2" /> Import Excel/CSV
+                <button onClick={() => document.getElementById('excel-import').click()} className="flex-1 lg:flex-none bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center shadow-sm" title="Upload Excel/CSV">
+                  <Upload size={16} className="mr-1.5" /> Import
                 </button>
-                <button onClick={handleExportProjects} className="bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center shadow-sm">
-                  <Download size={16} className="mr-2" /> Export
+                <button onClick={handleExportProjects} className="flex-1 lg:flex-none bg-gray-50 hover:bg-gray-100 text-gray-700 border border-gray-200 px-3 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center shadow-sm">
+                  <Download size={16} className="mr-1.5" /> Export
                 </button>
-                <button onClick={() => { setProjectForm({ id: '', client: '', priority: 'Medium', pm: '', backup: '', sales: '', status: 'Not started', phase: 'Identifikasi', startDate: '', endDate: '', linkDoc: '', noteHistory: [] }); setIsProjectModalOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center shadow-sm ml-1">
-                  <Plus size={16} className="mr-2" /> Tambah Project
+                <button onClick={() => { setProjectForm({ id: '', client: '', priority: 'Medium', pm: '', backup: '', sales: '', status: 'Not started', phase: 'Identifikasi', startDate: '', endDate: '', linkDoc: '', noteHistory: [] }); setIsProjectModalOpen(true); }} className="w-full lg:w-auto bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center shadow-sm">
+                  <Plus size={16} className="mr-1.5" /> Tambah Project
                 </button>
               </div>
             )}
           </div>
 
-          {/* FILTER BAR DIATAS TABEL */}
           <div className="bg-slate-50 border-y border-gray-200 px-6 py-3 flex flex-wrap items-center gap-3">
-            <div className="flex items-center bg-white border border-gray-300 rounded-lg px-3 py-2 shadow-sm flex-1 min-w-[200px] max-w-sm">
+            <div className="flex items-center bg-white border border-gray-300 rounded-lg px-3 py-2 shadow-sm flex-1 min-w-[150px]">
               <Search size={16} className="text-gray-400 mr-2"/>
-              <input type="text" placeholder="Cari nama project / client..." className="bg-transparent text-sm outline-none w-full font-medium" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+              <input type="text" placeholder="Cari nama project..." className="bg-transparent text-sm outline-none w-full font-medium" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
             </div>
-            <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shadow-sm outline-none hover:border-gray-400 focus:border-blue-500 transition-colors" value={projectFilters.priority} onChange={(e) => setProjectFilters({...projectFilters, priority: e.target.value})}>
+            <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shadow-sm outline-none hover:border-gray-400 focus:border-blue-500 w-full sm:w-auto" value={projectFilters.priority} onChange={(e) => setProjectFilters({...projectFilters, priority: e.target.value})}>
               <option value="">Semua Prioritas</option>
               <option value="High">High</option>
               <option value="Medium">Medium</option>
               <option value="Low">Low</option>
             </select>
-            <select disabled={userRole === 'staff'} className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shadow-sm outline-none disabled:bg-gray-100 disabled:text-gray-400 hover:border-gray-400 focus:border-blue-500 transition-colors" value={projectFilters.pm} onChange={(e) => setProjectFilters({...projectFilters, pm: e.target.value})}>
+            <select disabled={userRole === 'staff'} className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shadow-sm outline-none hover:border-gray-400 focus:border-blue-500 w-full sm:w-auto disabled:bg-gray-100 disabled:text-gray-400" value={projectFilters.pm} onChange={(e) => setProjectFilters({...projectFilters, pm: e.target.value})}>
               <option value="">Semua PSE</option>
               {PSE_NAMES.map(n => <option key={n} value={n}>{n}</option>)}
             </select>
-            <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shadow-sm outline-none hover:border-gray-400 focus:border-blue-500 transition-colors" value={projectFilters.phase} onChange={(e) => setProjectFilters({...projectFilters, phase: e.target.value})}>
+            <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shadow-sm outline-none hover:border-gray-400 focus:border-blue-500 w-full sm:w-auto" value={projectFilters.phase} onChange={(e) => setProjectFilters({...projectFilters, phase: e.target.value})}>
               <option value="">Semua Fase</option>
               <option value="Identifikasi">Identifikasi Awal</option>
               <option value="Penawaran & Proposal">Penawaran & Proposal</option>
@@ -985,20 +1050,17 @@ export default function App() {
               <option value="Instalasi">Instalasi & Deployment</option>
               <option value="BAST">BAST / Handover</option>
             </select>
-            <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shadow-sm outline-none hover:border-gray-400 focus:border-blue-500 transition-colors" value={projectFilters.status} onChange={(e) => setProjectFilters({...projectFilters, status: e.target.value})}>
+            <select className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium bg-white shadow-sm outline-none hover:border-gray-400 focus:border-blue-500 w-full sm:w-auto" value={projectFilters.status} onChange={(e) => setProjectFilters({...projectFilters, status: e.target.value})}>
               <option value="">Semua Status</option>
               <option value="Not started">Not started</option>
               <option value="In progress">In progress</option>
               <option value="Pending">Pending (Hold)</option>
               <option value="Completed">Completed (Won)</option>
             </select>
-            {(projectFilters.priority || projectFilters.pm || projectFilters.phase || projectFilters.status || searchQuery) && (
-              <button onClick={() => {setProjectFilters({priority:'', pm:'', phase:'', status:''}); setSearchQuery('');}} className="text-sm text-red-500 hover:text-red-700 font-bold px-2 py-2 flex items-center transition-colors">
-                <RefreshCw size={14} className="mr-1.5"/> Reset Filter
-              </button>
-            )}
           </div>
-          
+        </div>
+
+        <div className="hidden lg:block bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm text-gray-600 border-collapse min-w-[1450px]">
               <thead className="bg-slate-50 text-gray-700 uppercase font-semibold text-[11px] tracking-wider border-b border-gray-200">
@@ -1015,8 +1077,8 @@ export default function App() {
                   )}
                   <th className="px-4 py-4 w-56">Nama Klien / Project</th>
                   <th className="px-4 py-4 w-28 text-center">Prioritas</th>
-                  <th className="px-4 py-4 w-40">Tim PSE (Inline Edit)</th>
-                  <th className="px-4 py-4 w-40">Sales (Inline Edit)</th>
+                  <th className="px-4 py-4 w-40">Tim PSE</th>
+                  <th className="px-4 py-4 w-40">Sales</th>
                   <th className="px-4 py-4 w-40">Timeline (Tgl)</th>
                   <th className="px-4 py-4 w-40">Fase (Milestone)</th>
                   <th className="px-4 py-4 text-center w-36">Status</th>
@@ -1042,12 +1104,7 @@ export default function App() {
                     <tr key={proj.id} className={`hover:bg-blue-50/50 transition-colors group items-start ${isSelected ? 'bg-blue-50/70' : ''}`}>
                       {canDeleteProject && (
                         <td className="px-4 py-4 align-top text-center border-r border-gray-100">
-                           <input 
-                              type="checkbox" 
-                              checked={isSelected} 
-                              onChange={() => handleSelectProject(proj.id)} 
-                              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer w-4 h-4 mt-1" 
-                           />
+                           <input type="checkbox" checked={isSelected} onChange={() => handleSelectProject(proj.id)} className="rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer w-4 h-4 mt-1" />
                         </td>
                       )}
                       <td className="px-4 py-4 align-top">
@@ -1067,24 +1124,14 @@ export default function App() {
                         <div className="flex flex-col gap-1.5">
                           <div className="flex flex-col">
                             <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">PM Utama</span>
-                            <select 
-                              disabled={!canManageProjectFull}
-                              value={proj.pm || ''} 
-                              onChange={(e) => handleInlineProjectUpdate(proj.id, 'pm', e.target.value)}
-                              className={`w-full text-xs font-bold px-2 py-1.5 rounded border outline-none transition ${canManageProjectFull ? 'bg-white border-gray-300 text-blue-700 hover:border-blue-400 focus:border-blue-500 cursor-pointer shadow-sm' : 'bg-gray-50 text-gray-600 border-transparent appearance-none cursor-default'}`}
-                            >
+                            <select disabled={!canManageProjectFull} value={proj.pm || ''} onChange={(e) => handleInlineProjectUpdate(proj.id, 'pm', e.target.value)} className={`w-full text-xs font-bold px-2 py-1.5 rounded border outline-none transition ${canManageProjectFull ? 'bg-white border-gray-300 text-blue-700 hover:border-blue-400 focus:border-blue-500 cursor-pointer shadow-sm' : 'bg-gray-50 text-gray-600 border-transparent appearance-none cursor-default'}`}>
                               <option value="">- Set PM -</option>
                               {PSE_NAMES.map(n => <option key={n} value={n}>{n}</option>)}
                             </select>
                           </div>
                           <div className="flex flex-col mt-0.5">
                             <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Backup</span>
-                            <select 
-                              disabled={!canManageProjectFull}
-                              value={proj.backup || ''} 
-                              onChange={(e) => handleInlineProjectUpdate(proj.id, 'backup', e.target.value)}
-                              className={`w-full text-xs font-semibold px-2 py-1.5 rounded border outline-none transition ${canManageProjectFull ? 'bg-white border-gray-300 text-gray-700 hover:border-blue-400 focus:border-blue-500 cursor-pointer shadow-sm' : 'bg-gray-50 text-gray-500 border-transparent appearance-none cursor-default'}`}
-                            >
+                            <select disabled={!canManageProjectFull} value={proj.backup || ''} onChange={(e) => handleInlineProjectUpdate(proj.id, 'backup', e.target.value)} className={`w-full text-xs font-semibold px-2 py-1.5 rounded border outline-none transition ${canManageProjectFull ? 'bg-white border-gray-300 text-gray-700 hover:border-blue-400 focus:border-blue-500 cursor-pointer shadow-sm' : 'bg-gray-50 text-gray-500 border-transparent appearance-none cursor-default'}`}>
                               <option value="">- Set Backup -</option>
                               {PSE_NAMES.map(n => <option key={n} value={n}>{n}</option>)}
                             </select>
@@ -1094,12 +1141,7 @@ export default function App() {
                       <td className="px-4 py-4 align-top">
                         <div className="flex flex-col">
                           <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-0.5">Assigned Sales</span>
-                          <select 
-                            disabled={!canManageProjectFull}
-                            value={proj.sales || ''} 
-                            onChange={(e) => handleInlineProjectUpdate(proj.id, 'sales', e.target.value)}
-                            className={`w-full text-xs font-semibold px-2 py-1.5 rounded border outline-none transition ${canManageProjectFull ? 'bg-white border-gray-300 text-gray-800 hover:border-blue-400 focus:border-blue-500 cursor-pointer shadow-sm' : 'bg-gray-50 text-gray-600 border-transparent appearance-none cursor-default'}`}
-                          >
+                          <select disabled={!canManageProjectFull} value={proj.sales || ''} onChange={(e) => handleInlineProjectUpdate(proj.id, 'sales', e.target.value)} className={`w-full text-xs font-semibold px-2 py-1.5 rounded border outline-none transition ${canManageProjectFull ? 'bg-white border-gray-300 text-gray-800 hover:border-blue-400 focus:border-blue-500 cursor-pointer shadow-sm' : 'bg-gray-50 text-gray-600 border-transparent appearance-none cursor-default'}`}>
                             <option value="">- Pilih Sales -</option>
                             {SALES_NAMES.map(s => <option key={s} value={s}>{s}</option>)}
                           </select>
@@ -1118,11 +1160,7 @@ export default function App() {
                         </div>
                       </td>
                       <td className="px-4 py-4 align-top">
-                        <select 
-                          value={proj.phase} 
-                          onChange={(e) => handleInlineProjectUpdate(proj.id, 'phase', e.target.value)}
-                          className="w-full bg-white border border-gray-200 hover:border-gray-300 focus:border-blue-500 rounded px-2 py-2 text-xs font-bold text-gray-700 outline-none cursor-pointer transition shadow-sm"
-                        >
+                        <select value={proj.phase} onChange={(e) => handleInlineProjectUpdate(proj.id, 'phase', e.target.value)} className="w-full bg-white border border-gray-200 hover:border-gray-300 focus:border-blue-500 rounded px-2 py-2 text-xs font-bold text-gray-700 outline-none cursor-pointer transition shadow-sm">
                           <option value="Identifikasi">Identifikasi Awal</option>
                           <option value="Penawaran & Proposal">Penawaran & Proposal</option>
                           <option value="PoC & Testing">PoC & Testing</option>
@@ -1131,11 +1169,7 @@ export default function App() {
                         </select>
                       </td>
                       <td className="px-4 py-4 align-top text-center">
-                        <select 
-                          value={proj.status} 
-                          onChange={(e) => handleInlineProjectUpdate(proj.id, 'status', e.target.value)}
-                          className={`w-full px-2 py-2 rounded text-[11px] font-bold border shadow-sm outline-none cursor-pointer text-center transition ${statusColor}`}
-                        >
+                        <select value={proj.status} onChange={(e) => handleInlineProjectUpdate(proj.id, 'status', e.target.value)} className={`w-full px-2 py-2 rounded text-[11px] font-bold border shadow-sm outline-none cursor-pointer text-center transition ${statusColor}`}>
                           <option value="Not started">Not started</option><option value="In progress">In progress</option><option value="Pending">Pending (Hold)</option><option value="Completed">Completed (Won)</option>
                         </select>
                       </td>
@@ -1157,47 +1191,26 @@ export default function App() {
                             {(!proj.noteHistory || proj.noteHistory.length === 0) && <span className="text-gray-400 text-[10px] italic flex items-center justify-center h-full">Belum ada catatan progres.</span>}
                           </div>
                           <div className="flex gap-1.5">
-                             <input 
-                               type="text" 
-                               value={newNotesMap[proj.id] || ''} 
-                               onChange={(e) => setNewNotesMap({...newNotesMap, [proj.id]: e.target.value})} 
-                               onKeyDown={(e) => e.key === 'Enter' && handleAddNoteToProject(proj.id)} 
-                               placeholder="Ketik update progres (Enter)..." 
-                               className="text-xs w-full border border-gray-300 rounded-lg px-3 py-1.5 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm" 
-                             />
-                             <button onClick={() => handleAddNoteToProject(proj.id)} disabled={!newNotesMap[proj.id]} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-3 py-1.5 rounded-lg border border-transparent transition shadow-sm" title="Simpan Catatan">
-                               <Send size={14}/>
-                             </button>
+                             <input type="text" value={newNotesMap[proj.id] || ''} onChange={(e) => setNewNotesMap({...newNotesMap, [proj.id]: e.target.value})} onKeyDown={(e) => e.key === 'Enter' && handleAddNoteToProject(proj.id)} placeholder="Ketik update progres (Enter)..." className="text-xs w-full border border-gray-300 rounded-lg px-3 py-1.5 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 shadow-sm" />
+                             <button onClick={() => handleAddNoteToProject(proj.id)} disabled={!newNotesMap[proj.id]} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-3 py-1.5 rounded-lg border border-transparent transition shadow-sm" title="Simpan Catatan"><Send size={14}/></button>
                           </div>
                         </div>
                       </td>
 
                       <td className="px-4 py-4 align-top">
                         <div className="flex items-center gap-1.5 justify-center">
-                          <input 
-                            type="url" 
-                            value={proj.linkDoc || ''} 
-                            onChange={(e) => handleInlineProjectUpdate(proj.id, 'linkDoc', e.target.value)}
-                            placeholder="Link GDrive..."
-                            className="w-full text-xs border border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white bg-gray-50 rounded px-2 py-2 outline-none transition"
-                          />
+                          <input type="url" value={proj.linkDoc || ''} onChange={(e) => handleInlineProjectUpdate(proj.id, 'linkDoc', e.target.value)} placeholder="Link GDrive..." className="w-full text-xs border border-transparent hover:border-gray-300 focus:border-blue-500 focus:bg-white bg-gray-50 rounded px-2 py-2 outline-none transition" />
                           {proj.linkDoc && (
-                            <a href={proj.linkDoc} target="_blank" rel="noopener noreferrer" className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-lg transition shadow-sm" title="Buka Dokumen di Tab Baru">
-                              <FileText size={16} />
-                            </a>
+                            <a href={proj.linkDoc} target="_blank" rel="noopener noreferrer" className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-lg transition shadow-sm" title="Buka Dokumen di Tab Baru"><FileText size={16} /></a>
                           )}
                         </div>
                       </td>
                       {canManageProjectFull && (
                         <td className="px-4 py-4 align-top text-center">
                           <div className="flex items-center justify-center gap-2 mt-1">
-                            <button onClick={() => {setProjectForm(proj); setIsProjectModalOpen(true);}} className="p-1.5 text-blue-600 hover:bg-blue-100 hover:text-blue-800 rounded transition" title="Edit Detail Project">
-                              <FileEdit size={16}/>
-                            </button>
+                            <button onClick={() => {setProjectForm(proj); setIsProjectModalOpen(true);}} className="p-1.5 text-blue-600 hover:bg-blue-100 hover:text-blue-800 rounded transition" title="Edit Detail Project"><FileEdit size={16}/></button>
                             {canDeleteProject && (
-                              <button onClick={() => handleDeleteProject(proj.id)} className="p-1.5 text-red-500 hover:bg-red-100 hover:text-red-700 rounded transition" title="Hapus Project">
-                                <Trash2 size={16}/>
-                              </button>
+                              <button onClick={() => handleDeleteProject(proj.id)} className="p-1.5 text-red-500 hover:bg-red-100 hover:text-red-700 rounded transition" title="Hapus Project"><Trash2 size={16}/></button>
                             )}
                           </div>
                         </td>
@@ -1211,6 +1224,113 @@ export default function App() {
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* Tampilan Mobile */}
+        <div className="lg:hidden grid grid-cols-1 gap-4 mt-2">
+           {displayProjects.length === 0 && (
+              <div className="bg-white rounded-xl border border-gray-200 p-8 text-center text-gray-500 font-medium shadow-sm">
+                Tidak ada project yang sesuai.
+              </div>
+           )}
+           {displayProjects.map((proj) => {
+              let statusColor = "bg-gray-50 text-gray-600 border-gray-200";
+              if(proj.status === 'Completed') statusColor = "bg-green-50 text-green-700 border-green-200";
+              else if(proj.status === 'In progress') statusColor = "bg-blue-50 text-blue-700 border-blue-200";
+              else if(proj.status === 'Pending') statusColor = "bg-orange-50 text-orange-700 border-orange-200";
+
+              let priorityColor = "bg-gray-50 text-gray-600 border-gray-200";
+              if(proj.priority === 'High') priorityColor = "bg-red-50 text-red-600 border-red-200";
+              else if(proj.priority === 'Medium') priorityColor = "bg-yellow-50 text-yellow-600 border-yellow-200";
+
+              const isSelected = selectedProjects.includes(proj.id);
+
+              return (
+                <div key={proj.id} className={`bg-white rounded-xl shadow-sm border ${isSelected ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-200'} p-4 transition-all overflow-hidden relative`}>
+                  
+                  {canDeleteProject && (
+                    <div className="absolute top-4 right-4">
+                      <input type="checkbox" checked={isSelected} onChange={() => handleSelectProject(proj.id)} className="w-5 h-5 rounded border-gray-300 text-blue-600" />
+                    </div>
+                  )}
+
+                  <div className="pr-8 mb-4 border-b border-gray-100 pb-4">
+                    <h3 className="font-black text-gray-800 text-lg leading-tight mb-1">{proj.client}</h3>
+                    <div className="flex gap-2">
+                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${priorityColor}`}>{proj.priority} Priority</span>
+                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider ${statusColor}`}>{proj.status}</span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="bg-slate-50 p-2.5 rounded-lg border border-gray-100">
+                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 block">Tim PSE</span>
+                      <p className="text-xs font-bold text-blue-700">{proj.pm || '-'}</p>
+                      <p className="text-[10px] font-semibold text-gray-500">BU: {proj.backup || '-'}</p>
+                    </div>
+                    <div className="bg-slate-50 p-2.5 rounded-lg border border-gray-100">
+                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 block">Timeline</span>
+                      <p className="text-xs font-bold text-gray-800">{proj.startDate ? new Date(proj.startDate).toLocaleDateString('id-ID', {day:'numeric', month:'short'}) : '-'} s/d</p>
+                      <p className="text-xs font-bold text-gray-800">{proj.endDate ? new Date(proj.endDate).toLocaleDateString('id-ID', {day:'numeric', month:'short'}) : '-'}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 mb-4 border-b border-gray-100 pb-4">
+                     <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 block">Ubah Fase</label>
+                          <select value={proj.phase} onChange={(e) => handleInlineProjectUpdate(proj.id, 'phase', e.target.value)} className="w-full bg-white border border-gray-300 focus:border-blue-500 rounded-lg px-2 py-2 text-xs font-bold text-gray-700 outline-none">
+                            <option value="Identifikasi">Identifikasi Awal</option><option value="Penawaran & Proposal">Penawaran & Proposal</option><option value="PoC & Testing">PoC & Testing</option><option value="Instalasi">Instalasi & Deployment</option><option value="BAST">BAST / Handover</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 block">Ubah Status</label>
+                          <select value={proj.status} onChange={(e) => handleInlineProjectUpdate(proj.id, 'status', e.target.value)} className="w-full bg-white border border-gray-300 focus:border-blue-500 rounded-lg px-2 py-2 text-xs font-bold text-gray-700 outline-none">
+                            <option value="Not started">Not started</option><option value="In progress">In progress</option><option value="Pending">Pending (Hold)</option><option value="Completed">Completed (Won)</option>
+                          </select>
+                        </div>
+                     </div>
+                     
+                     <div className="flex gap-2 w-full">
+                       <input type="url" value={proj.linkDoc || ''} onChange={(e) => handleInlineProjectUpdate(proj.id, 'linkDoc', e.target.value)} placeholder="Link GDrive..." className="w-full text-xs border border-gray-300 focus:border-blue-500 rounded-lg px-3 py-2 outline-none" />
+                       {proj.linkDoc && (
+                         <a href={proj.linkDoc} target="_blank" rel="noopener noreferrer" className="p-2 text-blue-600 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg shrink-0 flex items-center justify-center"><FileText size={16} /></a>
+                       )}
+                     </div>
+                  </div>
+
+                  <div className="mb-4">
+                     <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1.5 block">Histori Progres</span>
+                     <div className="max-h-[120px] overflow-y-auto space-y-2 bg-slate-50 border border-slate-200 rounded-lg p-2.5 shadow-inner mb-2">
+                        {proj.noteHistory && proj.noteHistory.map((n, i) => (
+                           <div key={i} className="text-[11px] border-b border-gray-200 pb-1.5 last:border-0 last:pb-0">
+                             <div className="flex justify-between items-center mb-1">
+                                <span className="font-bold text-gray-800">{n.author}</span>
+                                <span className="text-[9px] font-semibold text-gray-400 bg-white px-1.5 py-0.5 rounded border border-gray-200">{new Date(n.timestamp).toLocaleString('id-ID', {day:'numeric', month:'short'})}</span>
+                             </div>
+                             <p className="text-gray-600 leading-relaxed">{n.text}</p>
+                           </div>
+                        ))}
+                        {(!proj.noteHistory || proj.noteHistory.length === 0) && <span className="text-gray-400 text-[10px] italic flex items-center justify-center h-full">Belum ada progres.</span>}
+                     </div>
+                     <div className="flex gap-1.5">
+                         <input type="text" value={newNotesMap[proj.id] || ''} onChange={(e) => setNewNotesMap({...newNotesMap, [proj.id]: e.target.value})} onKeyDown={(e) => e.key === 'Enter' && handleAddNoteToProject(proj.id)} placeholder="Ketik update progres..." className="text-xs w-full border border-gray-300 rounded-lg px-3 py-2 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" />
+                         <button onClick={() => handleAddNoteToProject(proj.id)} disabled={!newNotesMap[proj.id]} className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white px-3 py-2 rounded-lg transition shadow-sm"><Send size={14}/></button>
+                     </div>
+                  </div>
+
+                  {canManageProjectFull && (
+                    <div className="flex justify-end gap-2 border-t border-gray-100 pt-3">
+                      <button onClick={() => {setProjectForm(proj); setIsProjectModalOpen(true);}} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-blue-600 bg-blue-50 rounded-lg"><FileEdit size={14}/> Edit Lengkap</button>
+                      {canDeleteProject && (
+                         <button onClick={() => handleDeleteProject(proj.id)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-red-600 bg-red-50 rounded-lg"><Trash2 size={14}/> Hapus</button>
+                      )}
+                    </div>
+                  )}
+
+                </div>
+              );
+           })}
         </div>
 
         {/* Modal Form Project */}
@@ -1258,7 +1378,6 @@ export default function App() {
                   </div>
                 </div>
                 
-                {/* TIMELINE FIELDS */}
                 <div className="grid grid-cols-2 gap-4 bg-blue-50 p-3 rounded-lg border border-blue-100">
                   <div>
                     <label className="block text-sm font-bold text-blue-800 mb-1">Start Date</label>
@@ -1437,6 +1556,7 @@ export default function App() {
                   <th className="px-6 py-4 text-center">Kultur<br/><span className="text-[10px] text-gray-400 font-normal">(20%)</span></th>
                   <th className="px-6 py-4 text-center font-bold text-blue-600">Skor Akhir</th>
                   <th className="px-6 py-4">Status Performa</th>
+                  {userRole === 'admin' && <th className="px-6 py-4 text-center">Aksi</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -1456,11 +1576,22 @@ export default function App() {
                       <td className="px-6 py-4">
                         <span className={`px-3 py-1.5 rounded-md text-xs font-bold shadow-sm ${statusConfig.color}`}>{emp.status}</span>
                       </td>
+                      {userRole === 'admin' && (
+                        <td className="px-6 py-4 text-center">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDeleteEvaluation(emp.id, emp.name); }} 
+                            className="p-1.5 text-red-500 hover:bg-red-100 rounded transition opacity-60 hover:opacity-100" 
+                            title="Hapus / Reset Penilaian"
+                          >
+                            <Trash2 size={16}/>
+                          </button>
+                        </td>
+                      )}
                     </tr>
                   )
                 })}
                 {sortedEvals.length === 0 && (
-                  <tr><td colSpan="8" className="text-center py-10 text-gray-500 font-medium">Data KPI Anda belum tersedia.</td></tr>
+                  <tr><td colSpan={userRole === 'admin' ? 9 : 8} className="text-center py-10 text-gray-500 font-medium">Data KPI Anda belum tersedia.</td></tr>
                 )}
               </tbody>
             </table>
